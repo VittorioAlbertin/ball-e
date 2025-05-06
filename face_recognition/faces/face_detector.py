@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from insightface.app import FaceAnalysis
 
-class FaceRecognizer:
+class FaceDetector:
     def __init__(self, det_thresh=0.6):
         self.detector = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider'])  # GPU
         self.detector.prepare(ctx_id=0)

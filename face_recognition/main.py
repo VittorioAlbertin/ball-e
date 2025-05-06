@@ -1,12 +1,15 @@
 import cv2
+import os
 import pickle
-from yolo_people_detection.detector import YOLODetector
-from recognition.face_recognizer import FaceRecognizer
-from recognition.face_database import FaceDatabase
+from yolo_detector.people_detector import YOLODetector
+from faces.face_detector import FaceDetector
+from faces.face_database import FaceDatabase
 
 def main():
-    detector = YOLODetector(model_name='yolov5su.pt')
-    recognizer = FaceRecognizer()
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # folder of main.py
+    model_path = os.path.join(base_dir, 'yolov5su.pt') 
+    yolo_detector = YOLODetector(model_name=model_path)
+    face_detector = FaceDetector()
     face_database = FaceDatabase()
     cap = cv2.VideoCapture(0)
 
@@ -25,7 +28,7 @@ def main():
         if not ret:
             break
 
-        people = detector.detect_people(frame)
+        people = yolo_detector.detect_people(frame)
         unknown_faces.clear()  # Clear previous frame's unknowns
 
         for person in people:
@@ -33,7 +36,7 @@ def main():
             person_crop = frame[y1:y2, x1:x2]
             rgb_crop = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
 
-            face_bbox, embedding = recognizer.detect_and_embed(rgb_crop)
+            face_bbox, embedding = face_detector.detect_and_embed(rgb_crop)
             if embedding is not None:
                 fx1, fy1, fx2, fy2 = face_bbox
                 abs_x1 = x1 + fx1

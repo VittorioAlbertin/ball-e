@@ -1,4 +1,3 @@
-# face_database.py
 import os
 import pickle
 import numpy as np
@@ -6,9 +5,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 class FaceDatabase:
     def __init__(self, path="known_faces.pkl", threshold=0.5):
-        self.path = path
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # folder of face_database.py
+        self.path = os.path.join(base_dir, path)               # full path to known_faces.pkl
         self.threshold = threshold
         self.faces = self._load_faces()
+
 
     def _load_faces(self):
         if os.path.exists(self.path):
