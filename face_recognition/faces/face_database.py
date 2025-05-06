@@ -35,13 +35,14 @@ class FaceDatabase:
 
     def recognize(self, embedding):
         if not self.faces:
-            return None
+            return None, None
 
         names = list(self.faces.keys())
         embeddings = np.array(list(self.faces.values()))
         similarities = cosine_similarity([embedding], embeddings)[0]
         best_match_idx = np.argmax(similarities)
+        best_score = similarities[best_match_idx]
 
-        if similarities[best_match_idx] > self.threshold:
-            return names[best_match_idx]
-        return None
+        if best_score > self.threshold:
+            return names[best_match_idx], best_score
+        return None, None

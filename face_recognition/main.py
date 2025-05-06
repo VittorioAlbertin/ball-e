@@ -1,7 +1,8 @@
 import cv2
 import os
+import time
 import pickle
-from yolo_detector.people_detector import YOLODetector
+from yolo_detector.yolo_detector import YOLODetector
 from faces.face_detector import FaceDetector
 from faces.face_database import FaceDatabase
 
@@ -22,13 +23,19 @@ def main():
     print("Press 's' to save a new face. Press 'q' to quit.")
     
     unknown_faces = []
+    prev_time = time.time()
 
     while True:
+        current_time = time.time()
+        delta_time = max(current_time - prev_time, 1e-6)
+        fps = 1 / delta_time
+        prev_time = current_time
+
         ret, frame = cap.read()
         if not ret:
             break
 
-        people = yolo_detector.detect_people(frame)
+        people, other = yolo_detector.detect(frame)
         unknown_faces.clear()  # Clear previous frame's unknowns
 
         for person in people:
@@ -46,9 +53,11 @@ def main():
 
                 cv2.rectangle(frame, (abs_x1, abs_y1), (abs_x2, abs_y2), (255, 0, 0), 2)
 
-                name = face_database.recognize(embedding)
+                name, confidence = face_database.recognize(embedding)
+
                 if name:
-                    cv2.putText(frame, name, (abs_x1, abs_y1 - 25),
+                    label = f"{name} ({confidence:.2f})"
+                    cv2.putText(frame, label, (abs_x1, abs_y1 - 25),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 else:
                     cv2.putText(frame, "Unknown", (abs_x1, abs_y1 - 25),
@@ -57,6 +66,9 @@ def main():
                     if cropped_face.size != 0:
                         unknown_faces.append((embedding, cropped_face))
 
+
+        cv2.putText(frame, f"FPS: {fps:.2f}", (10, 25),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         cv2.imshow("BALL·E - Person & Face Detection", frame)
         key = cv2.waitKey(1)
