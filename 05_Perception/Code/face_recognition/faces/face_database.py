@@ -31,8 +31,7 @@ class FaceDatabase:
             self.save()
             return True
         return False
-
-
+    
     def recognize(self, embedding):
         if not self.faces:
             return None, None
