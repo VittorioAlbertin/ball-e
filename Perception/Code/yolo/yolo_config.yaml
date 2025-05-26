@@ -1,0 +1,4 @@
+model_path: Perception\Code\yolo\yolov8n.pt
+# class_names_path:
+device: cuda  # or 'cpu' or leave blank for auto
+allowed_classes: [0, 56]  # person, chair

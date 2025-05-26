@@ -11,13 +11,32 @@
             "id": "68895cd62a561337",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "05_Perception/Notes/Perception.md",
+                "mode": "preview",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
+              "title": "Perception"
+            }
+          },
+          {
+            "id": "6f1d73af4996aac4",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "05_Perception/Notes/Perception.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Perception"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -74,7 +93,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 200
   },
   "right": {
     "id": "ca7f42d25fc27613",
@@ -164,16 +183,24 @@
       "command-palette:Open command palette": false
     }
   },
-  "active": "68895cd62a561337",
+  "active": "f036a9391b8a9921",
   "lastOpenFiles": [
+    "05_Perception/Code/yolo/yolo_config.yaml",
+    "05_Perception/Code/yolo/config.yaml",
+    "05_Perception/Code/yolo/yolo_detector.py",
+    "05_Perception/Code/yolo",
+    "05_Perception/Code/pipeline/face_recognition_pipeline.py",
+    "05_Perception/Code/pipeline",
+    "05_Perception/Code/face_recognition/recognizer.py",
+    "05_Perception/Code/face_recognition/recognition.py",
+    "05_Perception/Code/face_recognition/face_database.py",
+    "05_Perception/Code/face_recognition",
+    "05_Perception/Code/face_detection/face_detector.py",
+    "05_Perception/Notes/YOLO and Face Recognition.md",
     "05_Perception/Notes/Perception.md",
+    "00_Overview/BALL-E Vision.md",
     "README.md",
     "00_Overview/System Architecture.md",
-    "00_Overview/BALL-E Vision.md",
-    "05_Perception/Code/yolo_detector/yolov5su.pt",
-    "05_Perception/Code/yolo_detector/__pycache__",
-    "05_Perception/Code/yolo_detector/yolo_detector.py",
-    "05_Perception/Code/yolo_detector",
     "05_Perception/Notes/perception.md"
   ]
 }
