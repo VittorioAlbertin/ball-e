@@ -70,13 +70,13 @@ graph TD
 
 ## Tools & Frameworks
 
-| Task | Tools |
-|------|-------|
-| Object Detection | YOLOv5/YOLOv8 |
-| Face Recognition | InsightFace or MobileFaceNet |
-| SLAM | ORB-SLAM3 or VINS-Fusion |
-| Sensor Fusion | ROS2, robot_localization |
-| Audio | Vosk (local STT), Porcupine (wake word), custom DoA |
+| Task             | Tools                                               |
+| ---------------- | --------------------------------------------------- |
+| Object Detection | YOLOv5/YOLOv8                                       |
+| Face Recognition | InsightFace or MobileFaceNet                        |
+| SLAM             | ORB-SLAM3 or VINS-Fusion                            |
+| Sensor Fusion    | ROS2, robot_localization                            |
+| Audio            | Vosk (local STT), Porcupine (wake word), custom DoA |
 
 ---
 

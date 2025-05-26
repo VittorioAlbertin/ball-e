@@ -27,7 +27,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "05_Perception/Notes/Perception.md",
+                "file": "Perception/Notes/Perception.md",
                 "mode": "source",
                 "source": false
               },
@@ -183,8 +183,11 @@
       "command-palette:Open command palette": false
     }
   },
-  "active": "f036a9391b8a9921",
+  "active": "6f1d73af4996aac4",
   "lastOpenFiles": [
+    "Perception/Notes/YOLO and Face Recognition.md",
+    "00_Overview/Enviromental Awarness.md",
+    "00_Overview/BALL-E Vision.md",
     "05_Perception/Code/yolo/yolo_config.yaml",
     "05_Perception/Code/yolo/config.yaml",
     "05_Perception/Code/yolo/yolo_detector.py",
@@ -195,10 +198,8 @@
     "05_Perception/Code/face_recognition/recognition.py",
     "05_Perception/Code/face_recognition/face_database.py",
     "05_Perception/Code/face_recognition",
-    "05_Perception/Code/face_detection/face_detector.py",
     "05_Perception/Notes/YOLO and Face Recognition.md",
     "05_Perception/Notes/Perception.md",
-    "00_Overview/BALL-E Vision.md",
     "README.md",
     "00_Overview/System Architecture.md",
     "05_Perception/Notes/perception.md"

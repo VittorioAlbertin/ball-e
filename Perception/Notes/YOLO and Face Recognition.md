@@ -11,35 +11,10 @@
 
 ---
 
-### Proposed Folder Structure
-
-```
-05_Perception/
-└── Code/
-    ├── object_detection/
-    │   └── yolo/
-    │       ├── yolo_detector.py
-    │       └── config.yaml
-
-    ├── face_recognition/
-    │   ├── detection/
-    │   │   └── face_detector.py
-    │   ├── recognition/
-    │   │   ├── recognizer.py
-    │   │   └── face_database.py
-    │   └── pipeline.py
-
-    ├── tests/
-    │   ├── test_yolo.py
-    │   ├── test_face_detection.py
-    │   └── test_recognition_pipeline.py
-```
-
----
 
 ### Component Roles
 
-#### `object_detection/yolo/yolo_detector.py`
+#### yolo/yolo_detector.py`
 
 - Loads a YOLO model.
     
@@ -48,47 +23,38 @@
 - Returns object class, confidence score, and bounding box.
     
 - Can be used for general-purpose perception (navigation, object manipulation).
-    
 
-#### `face_recognition/detection/face_detector.py`
+#### `face_detection/face_detector.py`
 
-- Performs face detection using MTCNN, Haar cascades, RetinaFace, or YOLO filtered by class.
+- Performs face detection using insignhtface FaceAnalysis buffalo_1 on cropped image of each person detected by YOLO
     
 - Returns bounding boxes and cropped face images.
-    
 
-#### `face_recognition/recognition/recognizer.py`
+#### `face_recognition/recognizer.py`
 
 - Loads the facial embedding model.
     
 - Compares embeddings with stored database.
     
 - Returns name and similarity score for recognized individuals.
-    
 
-#### `face_recognition/recognition/face_database.py`
+#### `face_recognition/face_database.py`
 
 - Manages known faces and embeddings.
     
 - Supports adding, removing, updating, and listing known identities.
     
-- Saves and loads data from disk (e.g., JSON or pickle).
-    
+- Saves and loads data from disk (JSON or pickle).
 
-#### `face_recognition/utils/preprocessing.py`
-
-- Handles image normalization, face alignment, and other preparation steps.
-    
-
-#### `face_recognition/pipeline.py`
+#### pipeline/face_processing_pipeline.py`
 
 - Coordinates the full face recognition pipeline:
     
-    1. Run face detection
+    1. Run YOLO object detection
         
-    2. Preprocess faces
+    2. Detect faces in ROI
         
-    3. Extract embeddings
+    3. Extract face embeddings
         
     4. Compare with the database
         
@@ -96,7 +62,7 @@
         
 
 ---
-	
+
 ### Future ROS Integration (Preview)
 
 Each component can be turned into a standalone ROS node:
