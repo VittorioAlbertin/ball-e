@@ -42,11 +42,11 @@ while True:
                     cv2.putText(frame, label, (x1, y1 - 25),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             else:
-               cv2.putText(frame, "Unknown", (x1, y1 - 25),
+                cv2.putText(frame, "Unknown", (x1, y1 - 25),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-            cropped_face = frame[y1:y2, x1:x2]
-            if cropped_face.size != 0:
-                unknown_faces.append((embedding, cropped_face))
+                cropped_face = frame[y1:y2, x1:x2]
+                if cropped_face.size != 0:
+                    unknown_faces.append((embedding, cropped_face))
 
     elif error:
         cv2.putText(frame, error, (20, 30),
