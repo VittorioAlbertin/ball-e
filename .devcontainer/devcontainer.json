@@ -1,0 +1,22 @@
+{
+  "name": "BALL·E ROS2 Jazzy",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/ros2_ws",
+  "runArgs": [
+    "--network=host",
+    "--gpus",
+    "all",
+    "-v",
+    "${localWorkspaceFolder}/ros2_ws:/ros2_ws"
+  ],
+  "extensions": [
+    "ms-iot.vscode-ros",
+    "ms-python.python"
+  ],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  }
+}
