@@ -4,3 +4,6 @@ source;share/sensors_pkg/hook/pythonpath.sh
 source;share/sensors_pkg/hook/ament_prefix_path.ps1
 source;share/sensors_pkg/hook/ament_prefix_path.dsv
 source;share/sensors_pkg/hook/ament_prefix_path.sh
+source;../../build/sensors_pkg/share/sensors_pkg/hook/pythonpath_develop.ps1
+source;../../build/sensors_pkg/share/sensors_pkg/hook/pythonpath_develop.dsv
+source;../../build/sensors_pkg/share/sensors_pkg/hook/pythonpath_develop.sh

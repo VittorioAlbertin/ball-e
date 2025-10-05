@@ -1,0 +1,18 @@
+running develop
+running egg_info
+creating emotion_pkg.egg-info
+writing emotion_pkg.egg-info/PKG-INFO
+writing dependency_links to emotion_pkg.egg-info/dependency_links.txt
+writing requirements to emotion_pkg.egg-info/requires.txt
+writing top-level names to emotion_pkg.egg-info/top_level.txt
+writing manifest file 'emotion_pkg.egg-info/SOURCES.txt'
+reading manifest file 'emotion_pkg.egg-info/SOURCES.txt'
+writing manifest file 'emotion_pkg.egg-info/SOURCES.txt'
+running build_ext
+Creating /ball-e/ros2_ws/install/emotion_pkg/lib/python3.12/site-packages/emotion-pkg.egg-link (link to .)
+
+Installed /ball-e/ros2_ws/build/emotion_pkg
+running symlink_data
+creating /ball-e/ros2_ws/install/emotion_pkg/share/ament_index/resource_index/packages
+symbolically linking /ball-e/ros2_ws/build/emotion_pkg/resource/emotion_pkg -> /ball-e/ros2_ws/install/emotion_pkg/share/ament_index/resource_index/packages
+symbolically linking /ball-e/ros2_ws/build/emotion_pkg/package.xml -> /ball-e/ros2_ws/install/emotion_pkg/share/emotion_pkg

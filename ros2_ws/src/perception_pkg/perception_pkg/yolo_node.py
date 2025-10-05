@@ -22,7 +22,7 @@ class YoloNode(Node):
         self.bridge = CvBridge()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.get_logger().info(f"Using device: {self.device}")
-
+        self.latest_msg = None
         # Subscribers and Publishers
         self.subscription = self.create_subscription(
             Image, '/camera/image_raw', self.image_callback, 1
@@ -36,6 +36,7 @@ class YoloNode(Node):
         self.thread = threading.Thread(target=self.process_frame)
         self.thread.daemon = True
         self.thread.start()
+        
 
         # Load YOLO model (offline if available)
         if os.path.exists(MODEL_PATH):

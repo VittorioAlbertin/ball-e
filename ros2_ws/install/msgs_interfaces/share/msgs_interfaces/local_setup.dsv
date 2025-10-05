@@ -1,2 +1,1 @@
-source;share/msgs_interfaces/environment/ament_prefix_path.sh
-source;share/msgs_interfaces/environment/path.sh
+/ball-e/ros2_ws/build/msgs_interfaces/ament_cmake_environment_hooks/local_setup.dsv

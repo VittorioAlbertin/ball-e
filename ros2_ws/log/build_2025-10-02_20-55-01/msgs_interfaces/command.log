@@ -1,6 +1,0 @@
-Invoking command in '/workspace/ros2_ws/build/msgs_interfaces': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy /usr/bin/cmake /workspace/ros2_ws/src/msgs_interfaces -DCMAKE_INSTALL_PREFIX=/workspace/ros2_ws/install/msgs_interfaces
-Invoked command in '/workspace/ros2_ws/build/msgs_interfaces' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy /usr/bin/cmake /workspace/ros2_ws/src/msgs_interfaces -DCMAKE_INSTALL_PREFIX=/workspace/ros2_ws/install/msgs_interfaces
-Invoking command in '/workspace/ros2_ws/build/msgs_interfaces': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy /usr/bin/cmake --build /workspace/ros2_ws/build/msgs_interfaces -- -j28 -l28
-Invoked command in '/workspace/ros2_ws/build/msgs_interfaces' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy /usr/bin/cmake --build /workspace/ros2_ws/build/msgs_interfaces -- -j28 -l28
-Invoking command in '/workspace/ros2_ws/build/msgs_interfaces': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy /usr/bin/cmake --install /workspace/ros2_ws/build/msgs_interfaces
-Invoked command in '/workspace/ros2_ws/build/msgs_interfaces' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy /usr/bin/cmake --install /workspace/ros2_ws/build/msgs_interfaces

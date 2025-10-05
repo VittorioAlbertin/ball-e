@@ -1,31 +1,13 @@
 {
-    "name": "BALL·E ROS2 Jazzy DevContainer",
-    "build": {
-        "dockerfile": "Dockerfile"
-    },
-    "runArgs": [
-        "--privileged",
-        "--group-add=video",
-        "--device=/dev/video0:/dev/video0",
-        "--device=/dev/video1:/dev/video1",
-        "--cap-add=ALL"
-    ],
-    "workspaceFolder": "/workspace",
-    "mounts": [
-        "source=${localWorkspaceFolder}/ros2_ws,target=/workspace/ros2_ws,type=bind"
-    ],
-    "forwardPorts": [5901],
-    "remoteUser": "root",
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "ms-vscode.cpptools",
-                "ms-iot.vscode-ros",
-                "ms-python.python"
-            ],
-            "settings": {
-                 "terminal.integrated.shell.linux": "/bin/bash"
-            }
-        }
-    }
+  "name": "jazzy desktop-full",
+  "dockerFile": "Dockerfile",
+  "runArgs": [
+    "--privileged",
+    "--network=host"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/${localWorkspaceFolderBasename},type=bind",
+  "workspaceFolder": "/${localWorkspaceFolderBasename}",
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.bash_history,target=/home/vscode/.bash_history,type=bind"
+  ]
 }

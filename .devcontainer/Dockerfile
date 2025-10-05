@@ -1,50 +1,45 @@
-# Use Ubuntu 24.04 as base
-FROM ros:jazzy
+FROM osrf/ros:jazzy-desktop-full
 
-ENV DEBIAN_FRONTEND=noninteractive
+# Add ubuntu user with same UID and GID as your host system, if it doesn't already exist
+# Since Ubuntu 24.04, a non-root user is created by default with the name vscode and UID=1000
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+RUN if ! id -u $USER_UID >/dev/null 2>&1; then \
+        groupadd --gid $USER_GID $USERNAME && \
+        useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME; \
+    fi
+# Add sudo support for the non-root user
+RUN apt-get update && \
+    apt-get install -y sudo && \
+    echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME && \
+    chmod 0440 /etc/sudoers.d/$USERNAME
 
-# Basic tools
+# System deps
 RUN apt-get update && apt-get install -y \
-    curl \
-    gnupg2 \
-    lsb-release \
-    sudo \
-    software-properties-common \
-    git \
-    wget \
-    python3-pip \
-    python3-venv \
-    dbus-x11 \
-    xfce4 xfce4-terminal \
-    tightvncserver \
-    v4l-utils \
+    sudo git python3-venv python3-dev python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# ROS2 Jazzy setup
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add - \
-    && sh -c 'echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list' \
-    && apt-get update \
-    && apt-get install -y ros-jazzy-desktop \
-    && rm -rf /var/lib/apt/lists/*
+# Switch from root to user
+USER $USERNAME
+WORKDIR /home/$USERNAME
 
-# More tools
-RUN apt-get update && apt-get install -y \
-    python3-colcon-common-extensions \
-    python3-opencv \
-    v4l-utils \
-    && rm -rf /var/lib/apt/lists/*
+# Add user to video group to allow access to webcam
+RUN sudo usermod --append --groups video $USERNAME
 
-# Setup ROS2 environment
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
+# Create venv for ML packages
+RUN python3 -m venv ~/ml_env
+ENV PATH="/home/$USERNAME/ml_env/bin:$PATH"
 
-# Create VNC password (default: 'vncpassword')
-RUN mkdir /root/.vnc && echo "vncpassword" | vncpasswd -f > /root/.vnc/passwd && chmod 600 /root/.vnc/passwd
+# Install deps inside venv
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-# Expose VNC port
-EXPOSE 5901
+# Update all packages
+# RUN sudo apt update && sudo apt upgrade -y
 
-# Add start script
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
+# Rosdep update
+RUN rosdep update
 
-CMD ["/start.sh"]
+# Source the ROS setup file
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc

@@ -1,0 +1,22 @@
+[1.605s] Invoking command in '/ball-e/ros2_ws/build/sensors_pkg': PYTHONPATH=/ball-e/ros2_ws/build/sensors_pkg/prefix_override:/home/ubuntu/ml_env/lib/python3.12/site-packages/colcon_core/task/python/colcon_distutils_commands:/ball-e/ros2_ws/install/sensors_pkg/lib/python3.12/site-packages:${PYTHONPATH} VIRTUAL_ENV_PROMPT=(ml_env) /home/ubuntu/ml_env/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /ball-e/ros2_ws/build/sensors_pkg/build --no-deps symlink_data
+[1.915s] running develop
+[2.099s] running egg_info
+[2.117s] creating sensors_pkg.egg-info
+[2.118s] writing sensors_pkg.egg-info/PKG-INFO
+[2.123s] writing dependency_links to sensors_pkg.egg-info/dependency_links.txt
+[2.123s] writing entry points to sensors_pkg.egg-info/entry_points.txt
+[2.124s] writing requirements to sensors_pkg.egg-info/requires.txt
+[2.125s] writing top-level names to sensors_pkg.egg-info/top_level.txt
+[2.125s] writing manifest file 'sensors_pkg.egg-info/SOURCES.txt'
+[2.187s] reading manifest file 'sensors_pkg.egg-info/SOURCES.txt'
+[2.192s] writing manifest file 'sensors_pkg.egg-info/SOURCES.txt'
+[2.210s] running build_ext
+[2.211s] Creating /ball-e/ros2_ws/install/sensors_pkg/lib/python3.12/site-packages/sensors-pkg.egg-link (link to .)
+[2.214s] Installing camera_node script to /ball-e/ros2_ws/install/sensors_pkg/lib/sensors_pkg
+[2.216s] 
+[2.216s] Installed /ball-e/ros2_ws/build/sensors_pkg
+[2.217s] running symlink_data
+[2.218s] creating /ball-e/ros2_ws/install/sensors_pkg/share/ament_index/resource_index/packages
+[2.218s] symbolically linking /ball-e/ros2_ws/build/sensors_pkg/resource/sensors_pkg -> /ball-e/ros2_ws/install/sensors_pkg/share/ament_index/resource_index/packages
+[2.219s] symbolically linking /ball-e/ros2_ws/build/sensors_pkg/package.xml -> /ball-e/ros2_ws/install/sensors_pkg/share/sensors_pkg
+[2.251s] Invoked command in '/ball-e/ros2_ws/build/sensors_pkg' returned '0': PYTHONPATH=/ball-e/ros2_ws/build/sensors_pkg/prefix_override:/home/ubuntu/ml_env/lib/python3.12/site-packages/colcon_core/task/python/colcon_distutils_commands:/ball-e/ros2_ws/install/sensors_pkg/lib/python3.12/site-packages:${PYTHONPATH} VIRTUAL_ENV_PROMPT=(ml_env) /home/ubuntu/ml_env/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /ball-e/ros2_ws/build/sensors_pkg/build --no-deps symlink_data

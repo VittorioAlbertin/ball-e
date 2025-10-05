@@ -1,0 +1,18 @@
+running develop
+running egg_info
+creating interaction_pkg.egg-info
+writing interaction_pkg.egg-info/PKG-INFO
+writing dependency_links to interaction_pkg.egg-info/dependency_links.txt
+writing requirements to interaction_pkg.egg-info/requires.txt
+writing top-level names to interaction_pkg.egg-info/top_level.txt
+writing manifest file 'interaction_pkg.egg-info/SOURCES.txt'
+reading manifest file 'interaction_pkg.egg-info/SOURCES.txt'
+writing manifest file 'interaction_pkg.egg-info/SOURCES.txt'
+running build_ext
+Creating /ball-e/ros2_ws/install/interaction_pkg/lib/python3.12/site-packages/interaction-pkg.egg-link (link to .)
+
+Installed /ball-e/ros2_ws/build/interaction_pkg
+running symlink_data
+creating /ball-e/ros2_ws/install/interaction_pkg/share/ament_index/resource_index/packages
+symbolically linking /ball-e/ros2_ws/build/interaction_pkg/resource/interaction_pkg -> /ball-e/ros2_ws/install/interaction_pkg/share/ament_index/resource_index/packages
+symbolically linking /ball-e/ros2_ws/build/interaction_pkg/package.xml -> /ball-e/ros2_ws/install/interaction_pkg/share/interaction_pkg
