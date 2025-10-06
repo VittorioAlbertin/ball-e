@@ -1,5 +1,5 @@
 {
-  "name": "jazzy desktop-full",
+  "name": "humble desktop-full",
   "dockerFile": "Dockerfile",
   "runArgs": [
     "--privileged",

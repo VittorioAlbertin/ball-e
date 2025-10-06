@@ -1,4 +1,4 @@
-FROM osrf/ros:jazzy-desktop-full
+FROM osrf/ros:humble-desktop-full
 
 # Add ubuntu user with same UID and GID as your host system, if it doesn't already exist
 # Since Ubuntu 24.04, a non-root user is created by default with the name vscode and UID=1000
@@ -17,7 +17,7 @@ RUN apt-get update && \
 
 # System deps
 RUN apt-get update && apt-get install -y \
-    sudo git python3-venv python3-dev python3-pip \
+    sudo git python3 python3-venv python3-dev python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Switch from root to user
@@ -32,8 +32,11 @@ RUN python3 -m venv ~/ml_env
 ENV PATH="/home/$USERNAME/ml_env/bin:$PATH"
 
 # Install deps inside venv
-COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+COPY requirements-heavy.txt /tmp/requirements-heavy.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements-heavy.txt
+
+COPY requirements-light.txt /tmp/requirements-light.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements-light.txt
 
 # Update all packages
 # RUN sudo apt update && sudo apt upgrade -y

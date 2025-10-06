@@ -1,13 +1,12 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
 from vision_msgs.msg import Detection2DArray, Detection2D, ObjectHypothesisWithPose
 import cv2
 import torch
 import threading
 import time
-import numpy as np
+import ros2_numpy as rnp
 import os
 
 MODEL_PATH = os.path.join(
@@ -19,7 +18,6 @@ MODEL_PATH = os.path.join(
 class YoloNode(Node):
     def __init__(self):
         super().__init__('yolo_node')
-        self.bridge = CvBridge()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.get_logger().info(f"Using device: {self.device}")
         self.latest_msg = None
@@ -65,9 +63,12 @@ class YoloNode(Node):
                 time.sleep(0.01)
                 continue
             try:
-                cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+                cv_image = rnp.numpify(msg)
                 # Convert to torch tensor
-                img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+                if cv_image.ndim == 2:  # grayscale
+                    img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_GRAY2RGB)
+                else:
+                    img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
                 results = self.model(img_rgb, size=640).to(self.device)  # you can adjust size
                 self.publish_results(results, msg.header)
             except Exception as e:
