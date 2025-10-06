@@ -44,7 +44,7 @@ class YoloNode(Node):
             self.get_logger().info("Downloading YOLOv5n pretrained model...")
             self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
             os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-            self.model.save(MODEL_PATH)
+            #self.model.model.save(MODEL_PATH)
             self.get_logger().info(f"Downloaded and saved YOLO model to {MODEL_PATH}")
         self.model.to(self.device)
         self.model.eval()
