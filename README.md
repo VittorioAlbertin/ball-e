@@ -1,33 +1,12 @@
-# BALL·E — A Tiny Emotional Robot Companion
+note to self:
+- from vscode --> `>Dev Containers: Rebuild and Reopen in container`
+even if the venv is not active, its sourced as the main python for colcon --> error when `colcon build`.
+- (if you tried to colcon build and got an error, remeber to clear your mess --> `cd ros2_ws && rm -rf install build log`)
+- deactivate venv with `source ~/ros2_ws/install/setup.bash`
+- run `colcon build`
+- for each node that needs to run in the venv:
+    `~/ros2_ws/install/[pkg_name]/lib/[pkg_name]/[node_name]`
+    change the first line from `#!/usr/bin/python3` to `#!/home/ubuntu/ml_env/bin/python3`
 
-BALL·E is a 15 cm spherical companion robot that blends the curiosity of a child, the warmth of a pet, and the intelligence of a cloud-connected assistant.
-
-This open-source project explores how a mobile robot can express emotions, evolve a personality, and help users through interaction, learning, and companionship.
-
----
-
-## Core Features
-- Pixel-display eyes with expressive animations
-- Curiosity-driven emotional engine and personality modeling
-- Stereo camera, IR, IMU, and mic array for perception
-- Autonomous movement, mapping, and wireless docking
-- Local voice interaction + ChatGPT API integration
-- Modular software split between robot and smart base
-
----
-
-## Repository Structure
-
-```bash
-00_Overview/      → Vision, architecture, goals  
-01_Design/        → CAD, layout, 3D models  
-02_Electronics/   → Circuit design, power systems  
-03_Software/      → ROS nodes, control code, microcontroller firmware  
-04_AI_Companion/  → Personality engine, GPT interface  
-05_Perception/    → SLAM, face recognition, object tracking  
-```
-
----
-
-## License
-This project is open source under the MIT License.
+- to activate the venv (if needed)
+    `source ~/ml_env/bin/activate`
