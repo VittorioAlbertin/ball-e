@@ -1,0 +1,11 @@
+ultralytics
+torch
+torchvision
+torchaudio
+numpy
+opencv-python
+ros2_numpy
+pandas
+tqdm
+seaborn
+colcon-common-extensions

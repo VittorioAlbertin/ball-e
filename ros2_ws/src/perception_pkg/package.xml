@@ -7,6 +7,8 @@
   <maintainer email="vittorio@todo.todo">vittorio</maintainer>
   <license>Apache-2.0</license>
 
+  <group_depend>ml</group_depend>
+
   <buildtool_depend>ament_python</buildtool_depend>
 
   <exec_depend>rclpy</exec_depend>

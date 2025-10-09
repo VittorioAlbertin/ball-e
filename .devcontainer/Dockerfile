@@ -24,16 +24,5 @@ RUN usermod --append --groups video $USERNAME
 USER $USERNAME
 WORKDIR /home/$USERNAME
 
-# Create venv for ML packages
-RUN python3 -m venv ~/ml_env
-ENV PATH="/home/$USERNAME/ml_env/bin:$PATH"
-
-# Install deps inside venv
-COPY requirements-heavy.txt /tmp/requirements-heavy.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements-heavy.txt
-
-COPY requirements-light.txt /tmp/requirements-light.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements-light.txt
-
 # Source the ROS setup file
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
