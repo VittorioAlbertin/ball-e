@@ -9,3 +9,7 @@ pandas
 tqdm
 seaborn
 colcon-common-extensions
+gitpython>=3.1.30
+setuptools>=70.0.0
+gitdb<5,>=4.0.1
+smmap==5.0.2
