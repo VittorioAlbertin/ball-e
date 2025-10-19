@@ -1,0 +1,7 @@
+string name
+string preferences_json
+string notes
+---
+bool success
+int32 person_id
+string message
