@@ -10,6 +10,17 @@ find_package(ament_cmake REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/AddPerson.srv"
+  "srv/RecognizeFace.srv"
+  "srv/GetPerson.srv"
+  "srv/UpdateLastSeen.srv"
+  "srv/UpdatePreferences.srv"
+  "srv/GetAllPeople.srv"
+  "srv/DeletePerson.srv"
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

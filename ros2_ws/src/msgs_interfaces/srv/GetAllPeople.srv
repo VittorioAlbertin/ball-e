@@ -1,0 +1,5 @@
+---
+int32[] person_ids
+string[] names
+string[] last_seen_times
+int32[] interaction_counts

@@ -1,0 +1,11 @@
+float32[] face_embedding
+float32 threshold
+---
+bool found
+int32 person_id
+string name
+string last_seen
+int32 interaction_count
+string preferences_json
+string notes
+string message

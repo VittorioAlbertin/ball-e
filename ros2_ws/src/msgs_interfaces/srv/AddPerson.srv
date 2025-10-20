@@ -1,0 +1,8 @@
+string name
+float32[] face_embedding
+string preferences_json
+string notes
+---
+bool success
+int32 person_id
+string message

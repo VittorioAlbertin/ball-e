@@ -31,7 +31,8 @@ for group, packages in packages_by_group.items():
     subprocess.run(
         f"{interpreter} -m colcon build "
         f"--merge-install "
-        f"--packages-select {' '.join(packages)}",
+        f"--packages-select {' '.join(packages)} "
+        f"--cmake-args -DPYTHON_EXECUTABLE={interpreter}",
         cwd=WS_PATH,
         shell=True,
         check=True,

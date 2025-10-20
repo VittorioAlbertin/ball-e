@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'people_database_node = interaction_pkg.people_database_node:main',
         ],
     },
 )
