@@ -9,11 +9,7 @@ import time
 import ros2_numpy as rnp
 import os
 
-MODEL_PATH = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)),
-    '..', 'models', 'yolo_model.pt'
-)
-
+MODEL_PATH = "/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models/yolov5n.pt"
 
 class YoloNode(Node):
     def __init__(self):
