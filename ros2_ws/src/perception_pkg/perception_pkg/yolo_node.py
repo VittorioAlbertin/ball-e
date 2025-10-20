@@ -65,7 +65,7 @@ class YoloNode(Node):
                     img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_GRAY2RGB)
                 else:
                     img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                results = self.model(img_rgb, size=640).to(self.device)  # you can adjust size
+                results = self.model(img_rgb, size=640)#.to(self.device)  # you can adjust size
                 self.publish_results(results, msg.header)
             except Exception as e:
                 self.get_logger().error(f"YOLO processing error: {e}")
@@ -80,17 +80,18 @@ class YoloNode(Node):
 
         for _, row in df.iterrows():
             det = Detection2D()
-
+            
             # Bounding box center + size
-            det.bbox.center.x = float((row.xmin + row.xmax) / 2.0)
-            det.bbox.center.y = float((row.ymin + row.ymax) / 2.0)
+            det.bbox.center.position.x = float((row.xmin + row.xmax) / 2.0)
+            det.bbox.center.position.y = float((row.ymin + row.ymax) / 2.0)
+            det.bbox.center.theta = 0.0  # No rotation for axis-aligned boxes
             det.bbox.size_x = float(row.xmax - row.xmin)
             det.bbox.size_y = float(row.ymax - row.ymin)
 
             # Class + confidence
             hyp = ObjectHypothesisWithPose()
-            hyp.id = int(row['class'])          # YOLO class ID
-            hyp.score = float(row['confidence']) # Confidence score
+            hyp.hypothesis.class_id = str(int(row['class']))  # class_id is a string
+            hyp.hypothesis.score = float(row['confidence'])
             det.results.append(hyp)
 
             det_array.detections.append(det)
