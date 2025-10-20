@@ -1,4 +1,5 @@
 string name
+float32[] face_embedding
 string preferences_json
 string notes
 ---

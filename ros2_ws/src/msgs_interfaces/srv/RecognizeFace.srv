@@ -1,3 +1,4 @@
+float32[] face_embedding
 float32 threshold
 ---
 bool found
