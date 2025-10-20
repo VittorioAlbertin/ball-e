@@ -20,10 +20,6 @@ class PeopleDatabase:
             db_path: Path to SQLite database file. 
                      Mount a Docker volume here for persistence.
         """
-        import os
-        print(f"Current working directory: {os.getcwd()}")
-        print(f"Attempting to connect to: {db_path}")
-
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Access columns by name
