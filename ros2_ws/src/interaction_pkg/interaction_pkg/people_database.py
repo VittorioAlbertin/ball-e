@@ -12,7 +12,7 @@ class PeopleDatabase:
     Stores names, face embeddings, and interaction metadata.
     """
     
-    def __init__(self, db_path: str = "/ros2_ws/robot_data/people.db"):
+    def __init__(self, db_path: str = "/ball-e/ros2_ws/robot_data/people.db"):
         """
         Initialize the database connection.
         
@@ -20,6 +20,10 @@ class PeopleDatabase:
             db_path: Path to SQLite database file. 
                      Mount a Docker volume here for persistence.
         """
+        import os
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Attempting to connect to: {db_path}")
+
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Access columns by name

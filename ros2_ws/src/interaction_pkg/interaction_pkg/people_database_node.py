@@ -1,6 +1,6 @@
 """
 People Database Service Node - SERVER
-File location: ros2_ws/src/perception_pkg/perception_pkg/people_database_node.py
+File location: ros2_ws/src/interaction_pkg/interaction_pkg/people_database_node.py
 
 This node runs continuously and provides database services that other nodes can call.
 It manages all database operations for people recognition.
@@ -17,7 +17,7 @@ from msgs_interfaces.srv import (
     UpdatePreferences, GetAllPeople, DeletePerson
 )
 
-from interaction_pkg.interaction_pkg.people_database import PeopleDatabase
+from interaction_pkg.people_database import PeopleDatabase
 
 
 class PeopleDatabaseNode(Node):
@@ -30,7 +30,7 @@ class PeopleDatabaseNode(Node):
         super().__init__('people_database_node')
         
         # Declare parameter for database path
-        self.declare_parameter('db_path', '/ros2_ws/robot_data/people.db')
+        self.declare_parameter('db_path', '/ball-e/ros2_ws/robot_data/people.db')
         db_path = self.get_parameter('db_path').value
         
         # Initialize database
