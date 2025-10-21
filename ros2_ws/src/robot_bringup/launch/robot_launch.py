@@ -47,4 +47,16 @@ def generate_launch_description():
                 # Add any parameters here if needed
             ]
         ),
+
+        # Face enrollment node
+        Node(
+            package='interaction_pkg',
+            executable='face_enrollment_node',
+            name='face_enrollment_node',
+            output='screen',
+            parameters=[
+                {'cooldown_seconds': 10.0},
+                {'min_confidence': 0.5}
+            ]
+        ),
     ])

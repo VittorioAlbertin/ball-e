@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'people_database_node = interaction_pkg.people_database_node:main',
+            'face_enrollment_node = interaction_pkg.face_enrollment_node:main',
+            'enroll_face = interaction_pkg.enroll_face_cli:main',
         ],
     },
 )
