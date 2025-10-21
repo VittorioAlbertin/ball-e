@@ -30,6 +30,10 @@ setup(
             'yolo_node = perception_pkg.yolo_node:main',
             'face_detection_node = perception_pkg.face_detection_node:main',
             'person_tracker = perception_pkg.person_tracker:main',
+            'person_state_manager = perception_pkg.person_state_manager:main',
+            'face_recognition_conditional = perception_pkg.face_recognition_conditional:main',
+            'identification_coordinator = perception_pkg.identification_coordinator:main',
+            'visualization_node = perception_pkg.visualization_node:main',
         ],
     },
 )
