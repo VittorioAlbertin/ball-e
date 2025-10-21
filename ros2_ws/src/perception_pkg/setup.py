@@ -29,6 +29,7 @@ setup(
         'console_scripts': [
             'yolo_node = perception_pkg.yolo_node:main',
             'face_detection_node = perception_pkg.face_detection_node:main',
+            'person_tracker = perception_pkg.person_tracker:main',
         ],
     },
 )

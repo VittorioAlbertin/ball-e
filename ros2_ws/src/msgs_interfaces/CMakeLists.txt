@@ -24,6 +24,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DeletePerson.srv"
   "srv/EnrollPendingFace.srv"
   "msg/FaceRecognition.msg"
+  "msg/PersonTrack.msg"
+  "msg/PersonTrackArray.msg"
   DEPENDENCIES std_msgs geometry_msgs
 )
 
