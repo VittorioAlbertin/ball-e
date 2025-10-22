@@ -236,7 +236,7 @@ class PeopleDatabase:
 # Example usage in a ROS2 node
 if __name__ == "__main__":
     # Initialize database
-    db = PeopleDatabase("/app/data/people.db")
+    db = PeopleDatabase("/ball-e/ros2_ws/robot_data/people.db")
     
     # Example: Add a new person (simulate face embedding with random vector)
     fake_embedding = np.random.rand(512)  # Typical face embedding size

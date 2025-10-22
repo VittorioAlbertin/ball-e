@@ -1,0 +1,12 @@
+# GetPersonInfo.srv
+# Service to retrieve information about a specific tracked person
+
+# Request
+int32 track_id
+
+---
+
+# Response
+bool success
+string message
+PersonState person_state

@@ -1,22 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>perception_pkg</name>
+  <name>robot_bringup</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="vittorio@todo.todo">vittorio</maintainer>
-  <license>Apache-2.0</license>
-
-  <group_depend>ml</group_depend>
-
-  <buildtool_depend>ament_python</buildtool_depend>
-
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>vision_msgs</exec_depend>
-  <exec_depend>torch</exec_depend>
-  <depend>msgs_interfaces</depend>
-  <depend>std_msgs</depend>
+  <maintainer email="v01albert@gmail.com">ubuntu</maintainer>
+  <license>TODO: License declaration</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

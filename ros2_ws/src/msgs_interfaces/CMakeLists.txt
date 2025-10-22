@@ -11,6 +11,9 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/AddPerson.srv"
@@ -20,6 +23,17 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/UpdatePreferences.srv"
   "srv/GetAllPeople.srv"
   "srv/DeletePerson.srv"
+  "srv/EnrollPendingFace.srv"
+  "srv/GetPersonInfo.srv"
+  "srv/RequestIdentification.srv"
+  "srv/UpdateIdentity.srv"
+  "msg/FaceRecognition.msg"
+  "msg/PersonTrack.msg"
+  "msg/PersonTrackArray.msg"
+  "msg/PersonState.msg"
+  "msg/PersonStateArray.msg"
+  "msg/IdentityUpdate.msg"
+  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 
 if(BUILD_TESTING)
