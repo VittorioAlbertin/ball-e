@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Visualization Node for Ball-e Robot
 

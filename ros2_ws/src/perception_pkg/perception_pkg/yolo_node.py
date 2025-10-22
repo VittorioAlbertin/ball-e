@@ -41,7 +41,6 @@ class YoloNode(Node):
             self.get_logger().info("Downloading YOLOv5n pretrained model...")
             self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
             os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-            #self.model.model.save(MODEL_PATH)
             self.get_logger().info(f"Downloaded and saved YOLO model to {MODEL_PATH}")
         self.model.to(self.device)
         self.model.eval()
@@ -57,14 +56,13 @@ class YoloNode(Node):
 
     def image_callback(self, msg):
         with self.lock:
-            self.latest_msg=msg
+            self.latest_msg = msg
 
     def process_frame(self):
         while rclpy.ok():
             with self.lock:
-                #msg = self.queue.pop(0)
                 msg = self.latest_msg
-                self.latest_msg = None # clear buffer
+                self.latest_msg = None  # clear buffer
             if msg is None:
                 time.sleep(0.01)
                 continue

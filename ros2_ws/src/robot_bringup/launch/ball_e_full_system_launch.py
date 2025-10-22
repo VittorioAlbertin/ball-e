@@ -65,8 +65,8 @@ def generate_launch_description():
     # Face recognition parameters
     recognition_threshold_arg = DeclareLaunchArgument(
         'recognition_threshold',
-        default_value='0.6',
-        description='Minimum cosine similarity for face matching'
+        default_value='0.75',
+        description='Minimum cosine similarity for face matching (0.75 = strict, 0.6 = loose)'
     )
 
     reidentification_interval_arg = DeclareLaunchArgument(

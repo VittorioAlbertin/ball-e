@@ -17,24 +17,27 @@ Welcome to the Ball-E robot documentation. This directory contains comprehensive
 # In Docker container
 cd /ball-e/ros2_ws
 source install/setup.bash
-ros2 launch robot_bringup robot_launch.py
+ros2 launch robot_bringup ball_e_full_system_launch.py
 ```
 
 ### Enroll Your Face
 
 1. Stand in front of camera
-2. Wait for "UNKNOWN FACE DETECTED" message
-3. Run: `ros2 run interaction_pkg enroll_face "Your Name"`
-4. You should now be recognized with a green bounding box!
+2. Check the visualization to see your track ID (e.g., "ID:1" on the bounding box)
+3. Run: `ros2 run interaction_pkg enroll_by_track_id 1 "Your Name"`
+4. You should now be recognized and displayed with your name!
 
-### Visualize in RViz
+### View Visualization
+
+The system publishes annotated video with tracking and identification info:
 
 ```bash
-rviz2
+# View in RViz2 or rqt_image_view
+ros2 run rqt_image_view rqt_image_view /visualization/annotated_image
 
-# Add Image displays:
-# - /yolo/image_detections
-# - /face/debug_image
+# Or use RViz2
+rviz2
+# Add Image display for: /visualization/annotated_image
 ```
 
 ## Node Documentation
@@ -44,34 +47,40 @@ rviz2
 | Node | Package | Description | Documentation |
 |------|---------|-------------|---------------|
 | YOLO Node | perception_pkg | Object detection (YOLO) | [docs](../ros2_ws/src/perception_pkg/docs/yolo_node.md) |
-| Face Detection Node | perception_pkg | Face detection & recognition | [docs](../ros2_ws/src/perception_pkg/docs/face_detection_node.md) |
+| Person Tracker | perception_pkg | ByteTrack multi-person tracking | [docs](../ros2_ws/src/perception_pkg/docs/person_tracker.md) |
+| Person State Manager | perception_pkg | Centralized person state | [docs](../ros2_ws/src/perception_pkg/docs/person_state_manager.md) |
+| Face Recognition (Conditional) | perception_pkg | On-demand face recognition | [docs](../ros2_ws/src/perception_pkg/docs/face_recognition_conditional.md) |
+| Identification Coordinator | perception_pkg | Smart identification triggers | [docs](../ros2_ws/src/perception_pkg/docs/identification_coordinator.md) |
+| Visualization Node | perception_pkg | Annotated video output | [docs](../ros2_ws/src/perception_pkg/docs/visualization_node.md) |
 
 ### Interaction Nodes
 
 | Node | Package | Description | Documentation |
 |------|---------|-------------|---------------|
 | People Database Node | interaction_pkg | Face storage & recognition | [docs](../ros2_ws/src/interaction_pkg/docs/people_database_node.md) |
-| Face Enrollment Node | interaction_pkg | Unknown face enrollment | [docs](../ros2_ws/src/interaction_pkg/docs/face_enrollment_node.md) |
 
 ## Architecture
 
 ```
-Camera → YOLO Detection → Face Detection → Recognition
-                              ↓              ↓
-                         Visualization   Database
-                                            ↓
-                                       Enrollment
+Camera → YOLO → Person Tracker → Person State Manager → Identification Coordinator
+                      ↓                    ↓                        ↓
+                 ByteTrack         Centralized State      Face Recognition (conditional)
+                                                                    ↓
+                                                            People Database
+
+                                        Visualization Node (annotated video)
 ```
 
 ### Key Features
 
-- ✅ Real-time face detection and recognition
+- ✅ Real-time person tracking with persistent IDs (ByteTrack)
+- ✅ On-demand face recognition (30 FPS system throughput)
+- ✅ Centralized person state management
+- ✅ Smart identification coordination
 - ✅ Persistent people database (SQLite)
-- ✅ Interactive face enrollment
-- ✅ Color-coded visualization
-- ✅ Async processing for high frame rates
-- ✅ NMS for duplicate removal
-- ✅ GPU acceleration support
+- ✅ Track-based enrollment system
+- ✅ Rich visualization with track IDs and identities
+- ✅ Modular and extensible architecture
 
 ## System Requirements
 
@@ -95,12 +104,13 @@ Camera → YOLO Detection → Face Detection → Recognition
 ### Image Topics
 - `/camera/image_raw` - Raw camera feed
 - `/yolo/image_detections` - Object detection visualization
-- `/face/debug_image` - Face recognition visualization
+- `/visualization/annotated_image` - Full tracking and identification visualization
 
 ### Detection Topics
-- `/yolo/detections` - Object detection results
-- `/face/detections` - Face bounding boxes
-- `/face/recognition` - Recognition results with person info
+- `/yolo/detections` - Object detection results (Detection2DArray)
+- `/person_tracker/tracks` - Person tracking with persistent IDs (PersonTrackArray)
+- `/person_state/all` - Complete person states (PersonStateArray)
+- `/face_recognition/identity_update` - Identity update events (IdentityUpdate)
 
 ## Services Overview
 
@@ -113,27 +123,41 @@ Camera → YOLO Detection → Face Detection → Recognition
 - `people_db/get_all_people` - List all people
 - `people_db/delete_person` - Remove person
 
-### Enrollment Services
-- `enroll_pending_face` - Enroll unknown face
+### State Management Services
+- `/person_state/update_identity` - Update person identity
+- `/person_state/request_identification` - Request face recognition for track
 
 ## Common Commands
 
 ### Launch
 ```bash
-# Full system
-ros2 launch robot_bringup robot_launch.py
+# Full system (recommended - includes all components)
+ros2 launch robot_bringup ball_e_full_system_launch.py
 
-# Individual nodes
+# Perception + Recognition only
+ros2 launch robot_bringup complete_pipeline_launch.py
+
+# Perception only (no face recognition)
+ros2 launch robot_bringup perception_pipeline_launch.py
+
+# Minimal (Camera + YOLO only)
+ros2 launch robot_bringup camera_yolo_launch.py
+
+# Individual nodes (advanced usage)
 ros2 run perception_pkg yolo_node
-ros2 run perception_pkg face_detection_node
+ros2 run perception_pkg person_tracker
+ros2 run perception_pkg person_state_manager
+ros2 run perception_pkg face_recognition_conditional
 ros2 run interaction_pkg people_database_node
-ros2 run interaction_pkg face_enrollment_node
 ```
 
 ### Enrollment
 ```bash
-# Enroll face
-ros2 run interaction_pkg enroll_face "Name" "Optional notes"
+# Enroll person by track ID
+ros2 run interaction_pkg enroll_by_track_id <track_id> "Name" "Optional notes"
+
+# Example: Enroll track ID 1 as "John Doe"
+ros2 run interaction_pkg enroll_by_track_id 1 "John Doe" "Friend from work"
 ```
 
 ### Database Management
@@ -161,23 +185,32 @@ cp /ball-e/ros2_ws/robot_data/people_backup_YYYYMMDD.db \
 
 ## Troubleshooting
 
-### Issue: No faces detected
-**Solution**: Lower `face_confidence_threshold` parameter (default 0.6 → 0.3)
+### Issue: Person not being tracked
+**Solution**:
+- Check YOLO detections are working
+- Adjust `min_hits` parameter (default: 3 confirmations needed)
+- Verify person is within camera view
 
 ### Issue: Faces not recognized
-**Solution**: Lower `recognition_threshold` parameter (default 0.6 → 0.5)
+**Solution**:
+- Check `recognition_threshold` parameter (default 0.75)
+- Ensure face is visible and looking at camera
+- Re-enroll with better quality face capture
+- Check logs for similarity scores
 
 ### Issue: Slow performance
 **Solution**:
-- Enable GPU acceleration
-- Reduce camera resolution
-- Check logs for bottlenecks
+- System is optimized for 30 FPS by default
+- Face recognition is on-demand (not every frame)
+- Check logs for actual bottlenecks
+- Reduce camera resolution if needed
 
 ### Issue: Enrollment fails
 **Solution**:
-- Ensure face_enrollment_node is running
-- Wait for "UNKNOWN FACE DETECTED" prompt
-- Enroll within 60 seconds
+- Verify track ID is correct from visualization
+- Ensure person is facing camera
+- Check that face is in top portion of person box
+- Look at logs for face extraction details
 
 ## Performance Tips
 
@@ -193,21 +226,33 @@ cp /ball-e/ros2_ws/robot_data/people_backup_YYYYMMDD.db \
 3. Multiple enrollment angles
 4. Adjust recognition threshold
 
-## Visualization Color Codes
+## Visualization Guide
 
-### Face Recognition
-- **Yellow/Cyan**: Recognition in progress
-- **Green**: Recognized (shows name)
-- **Red**: Unknown (not in database)
+### Track Display
+- **Track ID**: Shown as "ID:X" on bounding box
+- **Identity**: Person's name if recognized, "Unknown" if not, "Identifying..." during recognition
+- **Status**: [NEW], [LOW-CONF], [MISS:X] for tracking status
+- **Confidence Bar**: Visual indicator below bounding box
 
-### YOLO Detections
-- Different colors per object class
-- Label shows class name + confidence
+### Color Coding
+- **Bright colors**: Identified persons (brighter when confident)
+- **Yellow tint**: Currently identifying
+- **Dimmer colors**: Unknown persons
+- **Consistent colors**: Each track ID keeps same color
+
+### Statistics Overlay
+- **Tracked**: Total number of active tracks
+- **Identified**: Number of recognized persons
+- **Unknown**: Number of unidentified persons
+- **Pending ID**: Number waiting for identification
 
 ## Configuration Files
 
 ### Launch Files
-- `ros2_ws/src/robot_bringup/launch/robot_launch.py` - Main system launch
+- `ros2_ws/src/robot_bringup/launch/ball_e_full_system_launch.py` - Complete system (recommended)
+- `ros2_ws/src/robot_bringup/launch/complete_pipeline_launch.py` - Perception + Face recognition
+- `ros2_ws/src/robot_bringup/launch/perception_pipeline_launch.py` - Camera + YOLO + Tracking + State
+- `ros2_ws/src/robot_bringup/launch/camera_yolo_tracker_launch.py` - Camera + YOLO + Tracker
 - `ros2_ws/src/robot_bringup/launch/camera_yolo_launch.py` - Camera + YOLO only
 
 ### Parameters

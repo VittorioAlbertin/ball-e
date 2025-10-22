@@ -12,6 +12,9 @@ string identity
 # Recognition confidence (0.0 to 1.0)
 float32 confidence
 
+# Face embedding (for enrollment)
+float32[] face_embedding
+
 # Processing time in milliseconds
 float32 processing_time_ms
 

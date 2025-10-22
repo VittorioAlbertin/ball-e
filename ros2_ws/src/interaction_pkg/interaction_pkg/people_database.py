@@ -149,44 +149,70 @@ class PeopleDatabase:
                 for row in rows]
     
     def find_similar_face(
-        self, 
-        query_embedding: np.ndarray, 
-        threshold: float = 0.6
+        self,
+        query_embedding: np.ndarray,
+        threshold: float = 0.6,
+        logger=None
     ) -> Optional[Dict]:
         """
         Find a person with similar face embedding using cosine similarity.
-        
+
         Args:
             query_embedding: Face embedding to search for
             threshold: Similarity threshold (0-1), higher = more strict
-            
+            logger: Optional ROS logger for debug output
+
         Returns:
             Person dict if match found, None otherwise
         """
         embeddings = self.get_all_embeddings()
-        
+
         if not embeddings:
+            if logger:
+                logger.info("No embeddings in database")
             return None
-        
+
         best_match_id = None
+        best_match_name = None
         best_similarity = -1
-        
+
         # Normalize query embedding
         query_norm = query_embedding / np.linalg.norm(query_embedding)
-        
+
+        # Track all similarities for logging
+        all_similarities = []
+
         for person_id, stored_embedding in embeddings:
             # Cosine similarity
             stored_norm = stored_embedding / np.linalg.norm(stored_embedding)
             similarity = np.dot(query_norm, stored_norm)
-            
+
+            # Get person name for logging
+            person = self.get_person_by_id(person_id)
+            person_name = person['name'] if person else f"ID_{person_id}"
+            all_similarities.append((person_name, similarity))
+
             if similarity > best_similarity:
                 best_similarity = similarity
                 best_match_id = person_id
-        
+                best_match_name = person_name
+
+        # Log all similarities for debugging
+        if logger:
+            logger.info(f"Face matching results (threshold={threshold:.2f}):")
+            for name, sim in sorted(all_similarities, key=lambda x: x[1], reverse=True):
+                status = "✓ MATCH" if sim >= threshold else "✗ below threshold"
+                logger.info(f"  {name}: {sim:.4f} {status}")
+            logger.info(f"Best match: {best_match_name} with similarity {best_similarity:.4f}")
+
         if best_similarity >= threshold:
+            if logger:
+                logger.info(f"Accepting match: {best_match_name} (similarity {best_similarity:.4f} >= threshold {threshold:.2f})")
             return self.get_person_by_id(best_match_id)
-        
-        return None
+        else:
+            if logger:
+                logger.info(f"No match found. Best similarity {best_similarity:.4f} < threshold {threshold:.2f}")
+            return None
     
     def update_preferences(self, person_id: int, preferences: Dict):
         """Update user preferences."""

@@ -169,20 +169,30 @@ class FaceRecognitionConditional(Node):
             self.get_logger().error(f"Failed to cache image: {e}")
 
     def track_callback(self, msg):
-        """Process track updates and trigger identification for new tracks."""
-        if not self.auto_identify_new_tracks:
-            return
+        """Process track updates and trigger identification for new tracks or queued tracks."""
+        # Process new tracks if auto-identify is enabled
+        if self.auto_identify_new_tracks:
+            for track in msg.tracks:
+                if track.is_new_track:
+                    track_id = track.track_id
+                    self.get_logger().info(f'New track detected: {track_id}, queuing for identification')
+                    self.identification_queue.add(track_id)
+                    # Process immediately
+                    self._process_identification(track_id, track)
 
-        for track in msg.tracks:
-            if track.is_new_track:
-                track_id = track.track_id
-                self.get_logger().info(f'New track detected: {track_id}, queuing for identification')
-                self.identification_queue.add(track_id)
-                # Process immediately
+        # Process any tracks in the identification queue (from state_callback or other sources)
+        tracks_by_id = {track.track_id: track for track in msg.tracks}
+        for track_id in list(self.identification_queue):
+            if track_id in tracks_by_id:
+                track = tracks_by_id[track_id]
+                self.get_logger().info(f'Processing queued identification for track_id={track_id}')
                 self._process_identification(track_id, track)
 
     def state_callback(self, msg):
         """Monitor person states for identification requests."""
+        # Need to get tracks for processing - store person states
+        person_states = {p.track_id: p for p in msg.persons}
+
         for person in msg.persons:
             track_id = person.track_id
 
@@ -190,6 +200,11 @@ class FaceRecognitionConditional(Node):
             if person.requires_identification and track_id not in self.identification_queue:
                 self.get_logger().info(f'Identification requested for track_id={track_id}')
                 self.identification_queue.add(track_id)
+                # Need to process this, but we need track info from PersonTrack, not PersonState
+                # Store for processing when we get tracks
+
+        # Store person states for track matching
+        self.person_states = person_states
 
     def check_reidentification(self):
         """Check if any known persons need re-identification."""
@@ -219,8 +234,55 @@ class FaceRecognitionConditional(Node):
         bbox_w = int(track.bbox_w)
         bbox_h = int(track.bbox_h)
 
+        # Extract face region from person bounding box
+        # Assumption: face is in the upper portion of person box
+        # For a standing person, face is typically in top 25-30%
+
+        # Person ROI
+        person_x_min = max(0, bbox_x)
+        person_y_min = max(0, bbox_y)
+        person_x_max = min(image.shape[1], bbox_x + bbox_w)
+        person_y_max = min(image.shape[0], bbox_y + bbox_h)
+
+        if person_x_max <= person_x_min or person_y_max <= person_y_min:
+            self.get_logger().error(f'Invalid person bbox for track_id={track_id}')
+            return
+
+        # Estimate face region (top 30% of person box, centered horizontally)
+        person_height = person_y_max - person_y_min
+        person_width = person_x_max - person_x_min
+
+        # Face is typically in top 30% of person box
+        face_height = int(person_height * 0.30)
+        # Make it square for better face embedding
+        face_width = face_height
+
+        # Center horizontally
+        face_x_center = (person_x_min + person_x_max) // 2
+        face_x_min = max(0, face_x_center - face_width // 2)
+        face_x_max = min(image.shape[1], face_x_center + face_width // 2)
+
+        # Top of person box
+        face_y_min = person_y_min
+        face_y_max = min(image.shape[0], person_y_min + face_height)
+
+        # Validate face region
+        if face_x_max <= face_x_min or face_y_max <= face_y_min:
+            self.get_logger().error(f'Invalid face region for track_id={track_id}')
+            return
+
+        face_crop = image[face_y_min:face_y_max, face_x_min:face_x_max]
+
+        # Log extraction details
+        self.get_logger().info(
+            f'Track {track_id}: Person box=[{person_x_min},{person_y_min},{person_x_max},{person_y_max}] '
+            f'({person_width}x{person_height}px), '
+            f'Face region=[{face_x_min},{face_y_min},{face_x_max},{face_y_max}] '
+            f'({face_x_max - face_x_min}x{face_y_max - face_y_min}px)'
+        )
+
         # Quality check: face size
-        face_size = max(bbox_w, bbox_h)
+        face_size = max(face_x_max - face_x_min, face_y_max - face_y_min)
         quality_ok = self.min_face_size <= face_size <= self.max_face_size
 
         if not quality_ok:
@@ -230,18 +292,6 @@ class FaceRecognitionConditional(Node):
             )
             # Still process but log the warning
             # Optionally return here if quality is too poor
-
-        # Crop face from image
-        x_min = max(0, bbox_x)
-        y_min = max(0, bbox_y)
-        x_max = min(image.shape[1], bbox_x + bbox_w)
-        y_max = min(image.shape[0], bbox_y + bbox_h)
-
-        if x_max <= x_min or y_max <= y_min:
-            self.get_logger().error(f'Invalid bbox for track_id={track_id}')
-            return
-
-        face_crop = image[y_min:y_max, x_min:x_max]
 
         if face_crop.size == 0:
             self.get_logger().error(f'Empty face crop for track_id={track_id}')
@@ -265,56 +315,63 @@ class FaceRecognitionConditional(Node):
         request.threshold = self.recognition_threshold
 
         try:
-            # Synchronous call with timeout
+            # Asynchronous call with callback (non-blocking)
             future = self.face_recognition_client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
 
-            if future.done():
-                response = future.result()
-                recognition_time = (time.time() - recognition_start) * 1000
+            # Add callback to handle response when it arrives
+            def handle_recognition_response(future_result):
+                try:
+                    response = future_result.result()
+                    recognition_time = (time.time() - recognition_start) * 1000
 
-                # Total processing time
-                total_time = (time.time() - start_time) * 1000
+                    # Total processing time
+                    total_time = (time.time() - start_time) * 1000
 
-                # Create identity update message
-                identity_msg = IdentityUpdate()
-                identity_msg.header = header
-                identity_msg.track_id = track_id
-                identity_msg.identity = response.name if response.found else ''
-                identity_msg.confidence = self.recognition_threshold if response.found else 0.0
-                identity_msg.processing_time_ms = float(total_time)
-                identity_msg.face_size_pixels = float(face_size)
-                identity_msg.face_quality_ok = quality_ok
-                identity_msg.found_in_database = response.found
-                identity_msg.person_id = response.person_id
-                identity_msg.message = response.message
+                    # Create identity update message
+                    identity_msg = IdentityUpdate()
+                    identity_msg.header = header
+                    identity_msg.track_id = track_id
+                    identity_msg.identity = response.name if response.found else ''
+                    identity_msg.confidence = self.recognition_threshold if response.found else 0.0
+                    identity_msg.face_embedding = embedding.tolist()  # Include embedding for enrollment
+                    identity_msg.processing_time_ms = float(total_time)
+                    identity_msg.face_size_pixels = float(face_size)
+                    identity_msg.face_quality_ok = quality_ok
+                    identity_msg.found_in_database = response.found
+                    identity_msg.person_id = response.person_id
+                    identity_msg.message = response.message
 
-                # Publish identity update
-                self.identity_pub.publish(identity_msg)
+                    # Publish identity update
+                    self.identity_pub.publish(identity_msg)
 
-                # Update person state via service
-                self._update_person_state(track_id, identity_msg.identity, identity_msg.confidence)
+                    # Update person state via service
+                    self._update_person_state(track_id, identity_msg.identity, identity_msg.confidence)
 
-                # Log results
-                self.get_logger().info(
-                    f'Identification complete for track_id={track_id}: '
-                    f'identity={identity_msg.identity}, '
-                    f'found={response.found}, '
-                    f'total_time={total_time:.1f}ms '
-                    f'(embedding={embedding_time:.1f}ms, recognition={recognition_time:.1f}ms)'
-                )
+                    # Log results
+                    self.get_logger().info(
+                        f'Identification complete for track_id={track_id}: '
+                        f'identity={identity_msg.identity}, '
+                        f'found={response.found}, '
+                        f'total_time={total_time:.1f}ms '
+                        f'(embedding={embedding_time:.1f}ms, recognition={recognition_time:.1f}ms)'
+                    )
 
-                # Update last identification time
-                self.last_identification_time[track_id] = time.time()
+                    # Update last identification time
+                    self.last_identification_time[track_id] = time.time()
 
-                # Remove from queue
-                self.identification_queue.discard(track_id)
+                    # Remove from queue
+                    self.identification_queue.discard(track_id)
 
-            else:
-                self.get_logger().error(f'Recognition service timeout for track_id={track_id}')
+                except Exception as e:
+                    self.get_logger().error(f'Recognition response handling failed for track_id={track_id}: {e}')
+                    self.identification_queue.discard(track_id)
+
+            # Attach callback to future
+            future.add_done_callback(handle_recognition_response)
 
         except Exception as e:
             self.get_logger().error(f'Recognition service call failed for track_id={track_id}: {e}')
+            self.identification_queue.discard(track_id)
 
     def _get_face_embedding(self, face_image):
         """Extract face embedding using ONNX model."""

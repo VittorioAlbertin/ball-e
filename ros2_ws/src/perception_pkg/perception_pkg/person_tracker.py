@@ -11,9 +11,7 @@ ByteTrack Reference: https://arxiv.org/abs/2110.06864
 import rclpy
 from rclpy.node import Node
 from vision_msgs.msg import Detection2DArray
-from sensor_msgs.msg import Image
 from msgs_interfaces.msg import PersonTrack, PersonTrackArray
-import ros2_numpy as rnp
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
@@ -140,13 +138,6 @@ class PersonTrackerNode(Node):
             10
         )
 
-        self.image_sub = self.create_subscription(
-            Image,
-            '/camera/image_raw',
-            self.image_callback,
-            10
-        )
-
         # Publisher
         self.track_pub = self.create_publisher(
             PersonTrackArray,
@@ -155,12 +146,6 @@ class PersonTrackerNode(Node):
         )
 
         self.get_logger().info('Person Tracker Node started')
-
-    def image_callback(self, msg):
-        """Handle camera images (for future visual feature extraction)."""
-        # Placeholder for future visual feature extraction
-        # Currently not used in ByteTrack, but available for DeepSORT upgrade
-        pass
 
     def detection_callback(self, msg):
         """Process YOLO detections and update tracks."""

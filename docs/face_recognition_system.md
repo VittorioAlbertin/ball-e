@@ -1,8 +1,8 @@
-# Face Recognition System Documentation
+# Ball-E Person Tracking and Recognition System
 
 ## System Overview
 
-The Ball-E face recognition system provides real-time face detection, recognition, and person management capabilities. It consists of multiple ROS2 nodes working together to detect people, recognize known faces, and enroll new faces into a persistent database.
+The Ball-E system provides real-time person tracking, face recognition, and identity management with a modular, high-performance architecture. It uses ByteTrack for persistent person tracking, on-demand face recognition for efficiency, and centralized state management for coordinating all person-related information.
 
 ## Architecture
 
@@ -11,38 +11,63 @@ The Ball-E face recognition system provides real-time face detection, recognitio
 ```
 ┌─────────────┐
 │   Camera    │
-│    Node     │
 └──────┬──────┘
        │ /camera/image_raw
        ↓
 ┌─────────────┐
-│    YOLO     │
-│    Node     │──→ /yolo/image_detections (visualization)
+│    YOLO     │  (Object Detection)
 └──────┬──────┘
        │ /yolo/detections
        ↓
 ┌─────────────┐
-│Face Detection│
-│    Node     │──→ /face/debug_image (visualization)
-└──────┬──────┘     /face/detections
-       │ /face/recognition
-       ├────────────────────┐
-       ↓                    ↓
-┌─────────────┐      ┌─────────────┐
-│  Enrollment │      │   People    │
-│    Node     │─────→│  Database   │
-└─────────────┘      │    Node     │
-                     └─────────────┘
+│   Person    │  (ByteTrack - Persistent Track IDs)
+│   Tracker   │
+└──────┬──────┘
+       │ /person_tracker/tracks
+       ↓
+┌─────────────┐
+│   Person    │  (Centralized State Management)
+│State Manager│  (Combines tracking + identity)
+└──┬────┬─────┘
+   │    │ /person_state/all
+   │    └────────────────────────────┐
+   │                                  ↓
+   │                          ┌───────────────┐
+   │                          │Visualization  │
+   │                          │     Node      │
+   │                          └───────────────┘
+   │                           /visualization/annotated_image
+   ↓
+┌──────────────────┐
+│ Identification   │  (Smart Triggering)
+│  Coordinator     │
+└────────┬─────────┘
+         │ (triggers)
+         ↓
+┌─────────────────┐
+│Face Recognition │  (On-Demand, <200ms)
+│  (Conditional)  │
+└────────┬────────┘
+         │ /face_recognition/identity_update
+         ├──────────────────┐
+         ↓                  ↓
+┌─────────────┐      ┌──────────────┐
+│   People    │      │    Person    │
+│  Database   │←─────│     State    │
+│    Node     │      │   Manager    │
+└─────────────┘      └──────────────┘
 ```
 
 ### Data Flow
 
-1. **Image Acquisition**: Camera publishes raw images
-2. **Object Detection**: YOLO detects people in images
-3. **Face Detection**: Extracts faces from person ROIs
-4. **Face Recognition**: Compares faces against database
-5. **Enrollment**: Adds unknown faces to database on request
-6. **Visualization**: Displays annotated images with recognition results
+1. **Camera** → Raw images
+2. **YOLO** → Person detections
+3. **Person Tracker** → Persistent track IDs (ByteTrack)
+4. **Person State Manager** → Centralized person state (tracking + identity)
+5. **Identification Coordinator** → Smart triggering (new tracks, confidence decay, periodic)
+6. **Face Recognition** → On-demand embedding extraction + matching
+7. **People Database** → Face embedding storage + similarity matching
+8. **Visualization** → Annotated video with track IDs and identities
 
 ## Nodes
 
@@ -51,14 +76,17 @@ The Ball-E face recognition system provides real-time face detection, recognitio
 | Node | Description | Documentation |
 |------|-------------|---------------|
 | `yolo_node` | Real-time object detection (YOLO) | [yolo_node.md](../ros2_ws/src/perception_pkg/docs/yolo_node.md) |
-| `face_detection_node` | Face detection and recognition | [face_detection_node.md](../ros2_ws/src/perception_pkg/docs/face_detection_node.md) |
+| `person_tracker` | ByteTrack multi-person tracking | [person_tracker.md](../ros2_ws/src/perception_pkg/docs/person_tracker.md) |
+| `person_state_manager` | Centralized person state management | [person_state_manager.md](../ros2_ws/src/perception_pkg/docs/person_state_manager.md) |
+| `identification_coordinator` | Smart identification triggering | [identification_coordinator.md](../ros2_ws/src/perception_pkg/docs/identification_coordinator.md) |
+| `face_recognition_conditional` | On-demand face recognition | [face_recognition_conditional.md](../ros2_ws/src/perception_pkg/docs/face_recognition_conditional.md) |
+| `visualization_node` | Annotated video output | [visualization_node.md](../ros2_ws/src/perception_pkg/docs/visualization_node.md) |
 
 ### interaction_pkg
 
 | Node | Description | Documentation |
 |------|-------------|---------------|
 | `people_database_node` | Face storage and recognition service | [people_database_node.md](../ros2_ws/src/interaction_pkg/docs/people_database_node.md) |
-| `face_enrollment_node` | Unknown face enrollment interface | [face_enrollment_node.md](../ros2_ws/src/interaction_pkg/docs/face_enrollment_node.md) |
 
 ## Quick Start
 
@@ -68,15 +96,18 @@ The Ball-E face recognition system provides real-time face detection, recognitio
 # In Docker container
 cd /ball-e/ros2_ws
 source install/setup.bash
-ros2 launch robot_bringup robot_launch.py
+ros2 launch robot_bringup ball_e_full_system_launch.py
 ```
 
 This launches:
 - Camera node
 - YOLO detection node
-- Face detection node
+- Person tracker (ByteTrack)
+- Person state manager
+- Identification coordinator
+- Face recognition (conditional/on-demand)
 - People database node
-- Face enrollment node
+- Visualization node
 
 ### 2. View Visualization (RViz)
 
@@ -89,28 +120,26 @@ rviz2
 # - /face/debug_image (face recognition)
 ```
 
-### 3. Enroll a New Face
+### 3. Enroll a Person
 
-When an unknown face is detected, you'll see:
-```
-============================================================
-UNKNOWN FACE DETECTED!
-Confidence: 0.72
-============================================================
-Would you like to add this person to the database?
-Example:
-  ros2 run interaction_pkg enroll_face "John Doe"
-============================================================
-```
+When a person is tracked, check the visualization for their track ID.
 
-Enroll the face:
+Enroll by track ID in a new terminal:
 ```bash
-ros2 run interaction_pkg enroll_face "Your Name"
+# Example: If person has track ID 1
+ros2 run interaction_pkg enroll_by_track_id 1 "Your Name" "Optional notes"
+```
+
+You should see:
+```
+Waiting for identification to complete...
+[INFO] Captured embedding for track_id=1
+✓ SUCCESS: Successfully added Your Name with ID 1
 ```
 
 ### 4. Verify Recognition
 
-The face should now appear with a green bounding box and your name displayed.
+The person's name should now appear on the bounding box in the visualization.
 
 ## Topic Reference
 
@@ -179,16 +208,28 @@ db_path: /ball-e/ros2_ws/robot_data/people.db  # SQLite database location
 
 ### Launch File Configuration
 
-Edit `ros2_ws/src/robot_bringup/launch/robot_launch.py`:
+Edit `ros2_ws/src/robot_bringup/launch/ball_e_full_system_launch.py`:
 
 ```python
-# Example: Change face confidence threshold
+# Example: Change recognition parameters
 Node(
     package='perception_pkg',
-    executable='face_detection_node',
+    executable='face_recognition_conditional',
     parameters=[
-        {'face_confidence_threshold': 0.7},  # Higher = fewer false positives
-        {'recognition_threshold': 0.5}       # Lower = easier to match
+        {'recognition_threshold': 0.5},           # Lower = easier to match
+        {'reidentification_interval': 30.0},      # Re-identify every N seconds
+        {'auto_identify_new_tracks': True}        # Auto-identify new people
+    ]
+)
+
+# Example: Change tracker parameters
+Node(
+    package='perception_pkg',
+    executable='person_tracker',
+    parameters=[
+        {'max_age': 30},              # Frames to keep lost tracks
+        {'min_hits': 3},              # Confirmations needed for new track
+        {'iou_threshold': 0.3}        # Matching threshold
     ]
 )
 ```
@@ -230,19 +271,19 @@ Node(
 
 ```bash
 # 1. Launch system
-ros2 launch robot_bringup robot_launch.py
+ros2 launch robot_bringup ball_e_full_system_launch.py
 
-# 2. Open RViz for visualization
-rviz2
+# 2. View visualization
+ros2 run rqt_image_view rqt_image_view /visualization/annotated_image
 
 # 3. Position yourself in front of camera
 
-# 4. Wait for "UNKNOWN FACE DETECTED" prompt
+# 4. Check visualization for your track ID (e.g., "ID:1")
 
-# 5. Enroll yourself
-ros2 run interaction_pkg enroll_face "Your Name"
+# 5. Enroll by track ID in new terminal
+ros2 run interaction_pkg enroll_by_track_id 1 "Your Name"
 
-# 6. Verify recognition (green box with your name)
+# 6. Verify recognition - your name appears on bounding box
 ```
 
 ### Workflow 2: Adding Multiple People

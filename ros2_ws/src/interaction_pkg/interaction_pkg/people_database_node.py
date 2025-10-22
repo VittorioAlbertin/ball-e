@@ -96,9 +96,9 @@ class PeopleDatabaseNode(Node):
         try:
             embedding = np.array(request.face_embedding, dtype=np.float32)
             threshold = request.threshold if request.threshold > 0 else 0.6
-            
-            match = self.db.find_similar_face(embedding, threshold)
-            
+
+            match = self.db.find_similar_face(embedding, threshold, logger=self.get_logger())
+
             if match:
                 response.found = True
                 response.person_id = match['id']
