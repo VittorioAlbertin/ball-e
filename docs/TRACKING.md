@@ -296,4 +296,4 @@ Planned improvements:
 
 ---
 
-For integration with face recognition, see [RECOGNITION.md](RECOGNITION.md).
+For integration with face recognition, see [PIPELINE_FLOW.md](PIPELINE_FLOW.md).

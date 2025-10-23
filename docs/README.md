@@ -4,10 +4,12 @@ Welcome to the Ball-E robot documentation. This directory contains comprehensive
 
 ## Table of Contents
 
-1. [Face Recognition System](face_recognition_system.md) - Complete system overview
-2. [Node Documentation](#node-documentation) - Individual node references
-3. [Quick Start](#quick-start)
-4. [Architecture](#architecture)
+1. [Pipeline Flow](PIPELINE_FLOW.md) - Complete step-by-step vision pipeline walkthrough
+2. [Person Tracking](TRACKING.md) - ByteTrack algorithm and tracking system details
+3. [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+4. [Node Documentation](#node-documentation) - Individual node references
+5. [Quick Start](#quick-start)
+6. [Architecture](#architecture)
 
 ## Quick Start
 
@@ -299,7 +301,7 @@ Node(
 When adding new features:
 1. Update relevant node documentation
 2. Add examples to this README
-3. Update face_recognition_system.md if architecture changes
+3. Update PIPELINE_FLOW.md if architecture changes
 4. Test all documented commands
 5. Update changelog
 

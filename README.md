@@ -172,9 +172,8 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed parameter descriptions.
 
 - **[QUICKSTART.md](QUICKSTART.md)**: Getting started guide
 - **[API_REFERENCE.md](API_REFERENCE.md)**: Topics, services, and messages
+- **[docs/PIPELINE_FLOW.md](docs/PIPELINE_FLOW.md)**: Complete pipeline flow documentation
 - **[docs/TRACKING.md](docs/TRACKING.md)**: Person tracking system
-- **[docs/STATE_MANAGEMENT.md](docs/STATE_MANAGEMENT.md)**: State manager details
-- **[docs/RECOGNITION.md](docs/RECOGNITION.md)**: Face recognition system
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**: Common issues and solutions
 
 ## Project Structure
