@@ -9,3 +9,4 @@ int32 interaction_count
 string preferences_json
 string notes
 string message
+float32 similarity

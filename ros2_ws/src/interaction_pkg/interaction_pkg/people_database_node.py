@@ -97,9 +97,10 @@ class PeopleDatabaseNode(Node):
             embedding = np.array(request.face_embedding, dtype=np.float32)
             threshold = request.threshold if request.threshold > 0 else 0.6
 
-            match = self.db.find_similar_face(embedding, threshold, logger=self.get_logger())
+            result = self.db.find_similar_face(embedding, threshold, logger=self.get_logger())
 
-            if match:
+            if result:
+                match, similarity = result
                 response.found = True
                 response.person_id = match['id']
                 response.name = match['name']
@@ -107,21 +108,24 @@ class PeopleDatabaseNode(Node):
                 response.interaction_count = match['interaction_count']
                 response.preferences_json = json.dumps(match['preferences']) if match['preferences'] else ""
                 response.notes = match['notes'] if match['notes'] else ""
+                response.similarity = float(similarity)
                 response.message = f"Recognized {match['name']}"
-                
+
                 # Auto-update last seen
                 self.db.update_last_seen(match['id'])
-                self.get_logger().info(f"Recognized: {match['name']} (ID: {match['id']})")
+                self.get_logger().info(f"Recognized: {match['name']} (ID: {match['id']}, similarity: {similarity:.4f})")
             else:
                 response.found = False
+                response.similarity = 0.0
                 response.message = "No matching person found"
                 self.get_logger().info("Face not recognized")
-                
+
         except Exception as e:
             response.found = False
+            response.similarity = 0.0
             response.message = f"Error during recognition: {str(e)}"
             self.get_logger().error(response.message)
-        
+
         return response
     
     def get_person_callback(self, request, response):

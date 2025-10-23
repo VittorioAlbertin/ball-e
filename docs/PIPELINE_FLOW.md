@@ -368,75 +368,99 @@ frame_cache.append((timestamp, image, header))
 2. Explicit requests: `person.requires_identification == True` (lines 199-207)
 3. Queued identifications from coordinator (lines 184-189)
 
-#### 6.3 Face Region Extraction (lines 232-298)
+#### 6.3 Face Detection in Person ROI (lines 232-311)
 
-**Person-to-Face Estimation:**
+**Proper Face Detection Using UltraFace:**
 ```python
-# Person bounding box
-person_x, person_y, person_w, person_h = track.bbox
+# 1. Extract person ROI from full-resolution image
+person_roi = image[person_y:person_y+person_h, person_x:person_x+person_w]
 
-# Face estimation (top 30% of person box)
-face_height = int(person_height * 0.30)
-face_width = face_height  # Square region
+# 2. Resize ROI to detector input (320x240)
+resized_roi = cv2.resize(person_roi, (320, 240))
 
-# Center horizontally, top of person box
-face_x = person_x_center - face_width // 2
-face_y = person_y
+# 3. Run UltraFace detector
+outputs = face_detector_session.run(...)
+
+# 4. Get best face detection with confidence
+best_face_bbox = boxes[best_idx]  # Normalized coordinates
+best_confidence = scores[best_idx]
+
+# 5. Convert to image coordinates
+face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_bbox)
 ```
 
-**Rationale** (lines 239-240):
-- Assumes standing person
-- Face typically in top 25-30% of body
-- Square crop for better embedding extraction
+**Key Features**:
+- Uses lightweight UltraFace ONNX model (~1.2 MB)
+- Detects faces within person ROI only (fast)
+- Returns precise face coordinates (not estimated)
+- Confidence threshold: 0.7 (configurable)
 
-**Quality Checks** (lines 285-294):
-- Face size: 20-400 pixels (configurable)
-- Validates crop is not empty
-- Logs extraction details for debugging
+**Quality Checks** (lines 277-304):
+- Face detection confidence >= 0.7
+- Face size >= 40 pixels (configurable)
+- Validates bbox is within image bounds
+- Logs detection details for debugging
 
-#### 6.4 Face Embedding Extraction (lines 301-309, 376-398)
+#### 6.4 Face Embedding Extraction (lines 342-370, 438-460)
 
-**Model:** ONNX-optimized FaceNet/ArcFace (lines 68-77)
+**Uses Full-Resolution Face Crop:**
+- Face crop extracted from **original camera resolution** (not downscaled)
+- Maximizes facial detail for better embedding quality
+- Camera resolution auto-detected (supports any resolution)
+
+**Model:** ONNX-optimized FaceNet/ArcFace (lines 85-95)
 - Path: `/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models/facenet.onnx`
-- Auto-downloads if not present (lines 138-160)
+- Auto-downloads if not present (lines 156-178)
 
 **Process:**
-1. Resize face to model input size (typically 112x112)
-2. Normalize: `input_data = face_rgb / 255.0`
-3. Transpose: (H, W, C) → (C, H, W)
-4. Add batch dimension: (1, C, H, W)
-5. Run ONNX inference
-6. Extract embedding (512-dim vector)
-7. L2 normalize: `embedding / ||embedding||`
+1. Extract face crop from full-resolution image using detected bbox
+2. Resize face to model input size (typically 112x112)
+3. Normalize: `input_data = face_rgb / 255.0`
+4. Transpose: (H, W, C) → (C, H, W)
+5. Add batch dimension: (1, C, H, W)
+6. Run ONNX inference
+7. Extract embedding (512-dim vector)
+8. L2 normalize: `embedding / ||embedding||`
 
-**Performance:** ~50-100ms per face
+**Performance:** ~50-100ms per face (embedding extraction only)
 
-#### 6.5 Database Matching (lines 312-375)
+#### 6.5 Database Matching (lines 373-436)
 
 **Service Call:** `people_db/recognize_face`
 **Type:** `msgs_interfaces/srv/RecognizeFace`
 **Request:**
 - `face_embedding`: float32[] (512 dimensions)
-- `threshold`: 0.6 (cosine similarity threshold)
+- `threshold`: 0.75 (cosine similarity threshold)
+
+**Response:**
+- `found`: true/false
+- `person_id`, `name`: Matched person info
+- `similarity`: **Actual cosine similarity score** (0.0-1.0)
+- `message`: Status message
 
 **Async Processing:**
-- Non-blocking service call with callback (lines 319-370)
+- Non-blocking service call with callback (lines 380-431)
 - Allows continued processing during database query
-- Total latency: **<200ms**
+- Total latency: **<300ms** (including face detection + embedding + matching)
 
-#### 6.6 State Update (lines 347-348)
+#### 6.6 State Update (lines 397, 410)
 
 **Service Call:** `/person_state/update_identity`
 **Type:** `msgs_interfaces/srv/UpdateIdentity`
 **Request:**
 - `track_id`: Person to update
 - `identity`: Name from database (or '' if unknown)
-- `confidence`: Recognition confidence
+- `confidence`: **Actual similarity score from database** (not threshold!)
+
+**Important Changes:**
+- Confidence now uses **real similarity score** (e.g., 0.9823)
+- No longer hardcoded to threshold value (0.75)
+- Provides accurate match quality to visualization
 
 **Cleanup:**
-- Removes from identification queue (line 363)
-- Updates `last_identification_time` (line 360)
-- Logs results (lines 351-357)
+- Removes from identification queue after processing
+- Updates `last_identification_time` (line 425)
+- Logs detailed results with all timing breakdowns (lines 413-422)
 
 ### Output
 **Topic:** `/face_recognition/identity_update`
@@ -454,12 +478,26 @@ face_y = person_y
 - `message`: Status message
 
 ### Parameters
-- `recognition_threshold`: 0.6 (similarity threshold)
-- `min_face_size`: 20px (quality check)
-- `max_face_size`: 400px (quality check)
-- `frame_cache_size`: 10 frames
+- `face_detection_threshold`: 0.7 (face detector confidence threshold)
+- `recognition_threshold`: 0.75 (similarity threshold for matching)
+- `min_face_size`: 40px (minimum detected face size)
+- `frame_cache_size`: 10 frames (full-resolution image cache)
 - `reidentification_interval`: 30.0s
 - `auto_identify_new_tracks`: true
+
+### Models Used
+**Face Detector:** UltraFace RFB-320
+- Size: ~1.2 MB (ONNX)
+- Input: 320x240 RGB
+- URL: https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB
+- Performance: ~10-20ms per detection
+
+**Face Embedder:** ArcFace ResNet100
+- Size: ~100 MB (ONNX)
+- Input: 112x112 RGB (configurable)
+- Output: 512-dim normalized embedding
+- URL: https://github.com/onnx/models (ArcFace)
+- Performance: ~50-100ms per embedding
 
 ---
 
@@ -688,10 +726,12 @@ Pending ID: 0
 | YOLO inference | 20-40ms | YOLOv5n, async |
 | Person tracking | <5ms | ByteTrack algorithm |
 | State management | <1ms | Dictionary lookup |
-| Face recognition | <200ms | ONNX-optimized |
+| **Face detection** | **10-20ms** | **UltraFace on person ROI** |
+| **Face embedding** | **50-100ms** | **ArcFace on high-res crop** |
+| **Database matching** | **10-50ms** | **Cosine similarity, linear search** |
 | Visualization | <10ms | OpenCV drawing |
 | **Total (no face rec)** | **~50-80ms** | **12-20 FPS capable** |
-| **Total (with face rec)** | **~250ms** | **Only when triggered** |
+| **Total (with face rec)** | **~250-320ms** | **Only when triggered** |
 
 ### Resource Usage
 - **CPU:** ~40% (vs 100% in original always-on system)
@@ -712,22 +752,40 @@ Pending ID: 0
 **Solution:** Conditional triggering based on person state
 **Result:** 30x throughput improvement, 60% CPU reduction
 
-### 2. Centralized State Management
+### 2. Proper Face Detection (Not Estimation)
+**Problem:** Crude geometric estimation (top 30% of person box) caused:
+- Poor face crops (mostly background/clothing)
+- Extremely high false similarities (0.99+ for different people)
+- Identity flipping between people
+- Hardcoded confidence values
+
+**Solution:**
+- UltraFace detector for precise face localization in person ROI
+- Full-resolution image usage for maximum facial detail
+- Actual similarity scores passed as confidence (not threshold)
+
+**Result:**
+- Accurate face detection with confidence scores
+- Better embeddings from high-quality face crops
+- True confidence values in visualization (not stuck at 0.75)
+- Significantly reduced false matches
+
+### 3. Centralized State Management
 **Problem:** Distributed state across nodes caused inconsistencies
 **Solution:** Single source of truth (person_state_manager)
 **Result:** Clean separation of concerns, easier debugging
 
-### 3. ByteTrack Two-Stage Association
+### 4. ByteTrack Two-Stage Association
 **Problem:** Simple IoU matching lost tracks during occlusion
 **Solution:** High-confidence + low-confidence matching stages
 **Result:** More robust tracking, handles temporary occlusions
 
-### 4. Smart Identification Triggering
+### 5. Smart Identification Triggering
 **Problem:** When to trigger face recognition?
 **Solution:** Multi-rule coordinator (new tracks, confidence decay, periodic re-check)
 **Result:** Balanced coverage vs computational efficiency
 
-### 5. Async Processing Throughout
+### 6. Async Processing Throughout
 **Problem:** Synchronous processing blocks ROS callbacks
 **Solution:** Threading (YOLO), callbacks (services), caching (frames)
 **Result:** System remains responsive under load
@@ -779,16 +837,39 @@ rviz2 -d src/robot_bringup/rviz/ball_e_tracking.rviz
 ### Issue: No faces recognized
 **Possible causes:**
 1. No persons enrolled in database
-2. Face crop quality too poor (check face_size_pixels in identity_update)
-3. Recognition threshold too high
+2. Face not detected in person ROI (check logs for "No face detected")
+3. Face detection confidence too low (< 0.7)
+4. Recognition threshold too high
+5. Person not facing camera
 
 **Solutions:**
 ```bash
-# Enroll people
-ros2 run interaction_pkg enroll_face_cli
+# Check face detection logs
+ros2 topic echo /face_recognition/identity_update
 
-# Lower threshold (in launch file)
-recognition_threshold:=0.4
+# Lower face detection threshold
+face_detection_threshold:=0.5
+
+# Lower recognition threshold (in launch file)
+recognition_threshold:=0.65
+
+# Enroll people with better quality faces
+ros2 run interaction_pkg enroll_face_cli
+```
+
+### Issue: High false match rate (different people recognized as same)
+**Possible causes:**
+1. Recognition threshold too low
+2. Poor lighting conditions
+3. Similar appearance (siblings, etc.)
+
+**Solutions:**
+```bash
+# Increase recognition threshold
+recognition_threshold:=0.80
+
+# Re-enroll with multiple angles and lighting conditions
+# Check similarity scores in logs - should be >0.85 for good matches
 ```
 
 ### Issue: Tracking IDs jump frequently

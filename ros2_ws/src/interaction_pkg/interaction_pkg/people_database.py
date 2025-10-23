@@ -153,7 +153,7 @@ class PeopleDatabase:
         query_embedding: np.ndarray,
         threshold: float = 0.6,
         logger=None
-    ) -> Optional[Dict]:
+    ) -> Optional[tuple]:
         """
         Find a person with similar face embedding using cosine similarity.
 
@@ -163,7 +163,7 @@ class PeopleDatabase:
             logger: Optional ROS logger for debug output
 
         Returns:
-            Person dict if match found, None otherwise
+            Tuple of (person_dict, similarity_score) if match found, None otherwise
         """
         embeddings = self.get_all_embeddings()
 
@@ -192,6 +192,10 @@ class PeopleDatabase:
             person_name = person['name'] if person else f"ID_{person_id}"
             all_similarities.append((person_name, similarity))
 
+            # DEBUG: Log embedding comparison details
+            if logger:
+                logger.info(f"DEBUG {person_name}: query first 5: {query_norm[:5]}, stored first 5: {stored_norm[:5]}, dot product: {similarity:.6f}")
+
             if similarity > best_similarity:
                 best_similarity = similarity
                 best_match_id = person_id
@@ -208,7 +212,7 @@ class PeopleDatabase:
         if best_similarity >= threshold:
             if logger:
                 logger.info(f"Accepting match: {best_match_name} (similarity {best_similarity:.4f} >= threshold {threshold:.2f})")
-            return self.get_person_by_id(best_match_id)
+            return (self.get_person_by_id(best_match_id), best_similarity)
         else:
             if logger:
                 logger.info(f"No match found. Best similarity {best_similarity:.4f} < threshold {threshold:.2f}")
