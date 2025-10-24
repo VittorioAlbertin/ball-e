@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Identification Coordinator Node for Ball-e Robot
 

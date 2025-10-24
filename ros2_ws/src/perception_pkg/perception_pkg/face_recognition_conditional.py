@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Conditional Face Recognition Node for Ball-e Robot
 
@@ -27,6 +26,14 @@ import os
 import urllib.request
 from pathlib import Path
 
+# Try to import torch for GPU detection
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
 
 class FaceRecognitionConditional(Node):
     """On-demand face recognition node with proper face detection."""
@@ -45,6 +52,7 @@ class FaceRecognitionConditional(Node):
         self.declare_parameter('frame_cache_size', 10)  # Cache last N frames
         self.declare_parameter('reidentification_interval', 30.0)  # Re-ID every 30 seconds
         self.declare_parameter('auto_identify_new_tracks', True)  # Auto-identify new tracks
+        self.declare_parameter('use_gpu', True)  # Use GPU acceleration if available
 
         self.face_detector_model_path = self.get_parameter('face_detector_model_path').value
         self.face_detector_model_url = self.get_parameter('face_detector_model_url').value
@@ -56,6 +64,19 @@ class FaceRecognitionConditional(Node):
         self.frame_cache_size = self.get_parameter('frame_cache_size').value
         self.reidentification_interval = self.get_parameter('reidentification_interval').value
         self.auto_identify_new_tracks = self.get_parameter('auto_identify_new_tracks').value
+        self.use_gpu = self.get_parameter('use_gpu').value
+
+        # Detect GPU availability
+        self.gpu_available = False
+        if self.use_gpu:
+            if TORCH_AVAILABLE and torch.cuda.is_available():
+                self.gpu_available = True
+                self.get_logger().info(f'✓ GPU detected: {torch.cuda.get_device_name(0)}')
+                self.get_logger().info(f'  CUDA version: {torch.version.cuda}')
+            else:
+                self.get_logger().warning('GPU requested but not available, falling back to CPU')
+                if not TORCH_AVAILABLE:
+                    self.get_logger().warning('  PyTorch not installed (pip install torch)')
 
         # Logging
         self.get_logger().info('Conditional Face Recognition Node initializing...')
@@ -65,19 +86,28 @@ class FaceRecognitionConditional(Node):
         self.get_logger().info(f'  frame_cache_size: {self.frame_cache_size}')
         self.get_logger().info(f'  reidentification_interval: {self.reidentification_interval}s')
         self.get_logger().info(f'  auto_identify_new_tracks: {self.auto_identify_new_tracks}')
+        self.get_logger().info(f'  use_gpu: {self.use_gpu} (available: {self.gpu_available})')
 
         # Download models if needed
         self._ensure_model_exists(self.face_detector_model_path, self.face_detector_model_url, "face detector")
         self._ensure_model_exists(self.embedding_model_path, self.embedding_model_url, "face embedding")
 
+        # Configure execution providers (GPU or CPU)
+        providers = self._get_execution_providers()
+
         # Load face detector model (UltraFace)
         try:
             self.get_logger().info("Loading face detector model (UltraFace)...")
-            self.face_detector_session = ort.InferenceSession(self.face_detector_model_path)
+            self.face_detector_session = ort.InferenceSession(
+                self.face_detector_model_path,
+                providers=providers
+            )
             self.face_detector_input_name = self.face_detector_session.get_inputs()[0].name
             self.face_detector_input_shape = self.face_detector_session.get_inputs()[0].shape
+            actual_provider = self.face_detector_session.get_providers()[0]
             self.get_logger().info(f'✓ Loaded face detector: {self.face_detector_model_path}')
             self.get_logger().info(f'  Input shape: {self.face_detector_input_shape}')
+            self.get_logger().info(f'  Execution provider: {actual_provider}')
         except Exception as e:
             self.get_logger().error(f"Failed to load face detector model: {e}")
             raise
@@ -85,11 +115,16 @@ class FaceRecognitionConditional(Node):
         # Load embedding model
         try:
             self.get_logger().info("Loading face embedding model...")
-            self.embedding_session = ort.InferenceSession(self.embedding_model_path)
+            self.embedding_session = ort.InferenceSession(
+                self.embedding_model_path,
+                providers=providers
+            )
             self.embedding_input_name = self.embedding_session.get_inputs()[0].name
             self.embedding_input_shape = self.embedding_session.get_inputs()[0].shape
+            actual_provider = self.embedding_session.get_providers()[0]
             self.get_logger().info(f'✓ Loaded embedding model: {self.embedding_model_path}')
             self.get_logger().info(f'  Input shape: {self.embedding_input_shape}')
+            self.get_logger().info(f'  Execution provider: {actual_provider}')
         except Exception as e:
             self.get_logger().error(f"Failed to load embedding model: {e}")
             raise
@@ -107,13 +142,29 @@ class FaceRecognitionConditional(Node):
         self.face_recognition_client = self.create_client(RecognizeFace, 'people_db/recognize_face')
         self.update_identity_client = self.create_client(UpdateIdentity, '/person_state/update_identity')
 
-        # Wait for services
+        # Wait for services with timeout
+        max_retries = 30  # 30 seconds timeout
+        retry_count = 0
+
         self.get_logger().info('Waiting for face recognition service...')
         while not self.face_recognition_client.wait_for_service(timeout_sec=1.0):
+            retry_count += 1
+            if retry_count >= max_retries:
+                self.get_logger().error(
+                    f'Service people_db/recognize_face not available after {max_retries}s'
+                )
+                raise RuntimeError('Required service people_db/recognize_face not available')
             self.get_logger().info('  Still waiting for people_db/recognize_face...')
 
+        retry_count = 0
         self.get_logger().info('Waiting for update identity service...')
         while not self.update_identity_client.wait_for_service(timeout_sec=1.0):
+            retry_count += 1
+            if retry_count >= max_retries:
+                self.get_logger().error(
+                    f'Service person_state/update_identity not available after {max_retries}s'
+                )
+                raise RuntimeError('Required service person_state/update_identity not available')
             self.get_logger().info('  Still waiting for person_state/update_identity...')
 
         # Subscribers
@@ -152,6 +203,47 @@ class FaceRecognitionConditional(Node):
         )
 
         self.get_logger().info('Conditional Face Recognition Node started')
+
+    def _get_execution_providers(self):
+        """
+        Get ONNX Runtime execution providers based on GPU availability.
+
+        Returns:
+            List of execution provider names in priority order
+        """
+        available_providers = ort.get_available_providers()
+        self.get_logger().info(f'Available ONNX Runtime providers: {available_providers}')
+
+        providers = []
+
+        if self.gpu_available:
+            # Try CUDA first (NVIDIA GPUs)
+            if 'CUDAExecutionProvider' in available_providers:
+                providers.append('CUDAExecutionProvider')
+                self.get_logger().info('✓ Using CUDAExecutionProvider for GPU acceleration')
+            # Try TensorRT for even better performance
+            elif 'TensorrtExecutionProvider' in available_providers:
+                providers.append('TensorrtExecutionProvider')
+                self.get_logger().info('✓ Using TensorrtExecutionProvider for GPU acceleration')
+            # Try ROCm for AMD GPUs
+            elif 'ROCMExecutionProvider' in available_providers:
+                providers.append('ROCMExecutionProvider')
+                self.get_logger().info('✓ Using ROCMExecutionProvider for GPU acceleration')
+            else:
+                self.get_logger().warning(
+                    'GPU available but no GPU execution provider found. '
+                    'Install onnxruntime-gpu: pip install onnxruntime-gpu'
+                )
+
+        # Always add CPU as fallback
+        if 'CPUExecutionProvider' in available_providers:
+            providers.append('CPUExecutionProvider')
+
+        if not providers:
+            providers = ['CPUExecutionProvider']  # Default fallback
+
+        self.get_logger().info(f'Selected execution providers: {providers}')
+        return providers
 
     def _ensure_model_exists(self, model_path, model_url, model_name):
         """Download model if it doesn't exist locally."""
@@ -205,7 +297,7 @@ class FaceRecognitionConditional(Node):
                 queue_time = self.identification_queue.get(track_id)
                 if queue_time and time.time() - queue_time >= 0.5:  # Wait at least 0.5s between requests
                     self.get_logger().info(f'Processing queued identification for track_id={track_id}')
-                    self._process_identification(track_id, track)
+                    self._process_identification(track_id, track, msg.header)
                     # Remove from queue after processing (if still exists)
                     if track_id in self.identification_queue:
                         del self.identification_queue[track_id]
@@ -229,6 +321,41 @@ class FaceRecognitionConditional(Node):
                 if track_id not in self.identification_queue:
                     self.get_logger().info(f'Re-identification interval expired for track_id={track_id}')
                     self.identification_queue[track_id] = current_time
+
+    def _get_synchronized_frame(self, track_header):
+        """
+        Get frame with timestamp closest to track detection time.
+
+        Args:
+            track_header: Header from PersonTrackArray with timestamp
+
+        Returns:
+            Tuple of (timestamp, image, header) from frame cache, or None if cache is empty
+        """
+        if len(self.frame_cache) == 0:
+            return None
+
+        track_time_ns = track_header.stamp.sec * 1e9 + track_header.stamp.nanosec
+
+        best_match = None
+        min_time_diff = float('inf')
+
+        for cached_timestamp, cached_image, cached_header in self.frame_cache:
+            cached_time_ns = cached_header.stamp.sec * 1e9 + cached_header.stamp.nanosec
+            time_diff = abs(cached_time_ns - track_time_ns)
+
+            if time_diff < min_time_diff:
+                min_time_diff = time_diff
+                best_match = (cached_timestamp, cached_image, cached_header)
+
+        if best_match and min_time_diff < 200e6:  # Within 200ms tolerance
+            self.get_logger().debug(f'Matched frame with time_diff={min_time_diff/1e6:.1f}ms')
+            return best_match
+        else:
+            self.get_logger().warning(
+                f'No matching frame found (diff={min_time_diff/1e6:.1f}ms), using latest as fallback'
+            )
+            return self.frame_cache[-1]  # Fallback to latest
 
     def _detect_face_in_roi(self, image, bbox):
         """
@@ -333,16 +460,24 @@ class FaceRecognitionConditional(Node):
             self.get_logger().error(f"Face detection failed: {e}")
             return None
 
-    def _process_identification(self, track_id, track):
-        """Process face recognition for a specific track."""
+    def _process_identification(self, track_id, track, track_header):
+        """
+        Process face recognition for a specific track.
+
+        Args:
+            track_id: Track ID to process
+            track: PersonTrack message with bbox information
+            track_header: Header from PersonTrackArray with timestamp
+        """
         start_time = time.time()
 
-        # Get latest frame from cache (FULL RESOLUTION)
-        if len(self.frame_cache) == 0:
+        # Get synchronized frame from cache (FULL RESOLUTION) matching track timestamp
+        frame_data = self._get_synchronized_frame(track_header)
+        if frame_data is None:
             self.get_logger().warning(f'No frames in cache for track_id={track_id}')
             return
 
-        timestamp, image, header = self.frame_cache[-1]
+        timestamp, image, header = frame_data
 
         # Get person bounding box
         person_bbox = [track.bbox_x, track.bbox_y, track.bbox_w, track.bbox_h]
@@ -370,14 +505,6 @@ class FaceRecognitionConditional(Node):
         face_y_max = min(image.shape[0], int(face_y + face_h))
 
         face_crop = image[face_y_min:face_y_max, face_x_min:face_x_max]
-
-        # TEMP: Save face crop for debugging
-        try:
-            debug_path = f'/tmp/face_debug_track{track_id}.jpg'
-            cv2.imwrite(debug_path, face_crop)
-            self.get_logger().info(f'DEBUG: Saved face crop to {debug_path}')
-        except Exception as e:
-            self.get_logger().warning(f'Failed to save debug face crop: {e}')
 
         # Log extraction details
         self.get_logger().info(

@@ -98,7 +98,8 @@ class PersonStateManager(Node):
 
     def track_callback(self, msg):
         """Update person states from tracking information."""
-        current_time = self.get_clock().now()
+        # Use track timestamp instead of current time to maintain temporal alignment
+        current_time = Time.from_msg(msg.header.stamp)
         current_track_ids = set()
 
         for track in msg.tracks:
