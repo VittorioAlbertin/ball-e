@@ -35,11 +35,11 @@ class YoloNode(Node):
 
         # Load YOLO model (offline if available)
         if os.path.exists(MODEL_PATH):
-            self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_PATH)
+            self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_PATH, _verbose=False)
             self.get_logger().info(f"Loaded YOLO model from {MODEL_PATH}")
         else:
             self.get_logger().info("Downloading YOLOv5n pretrained model...")
-            self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+            self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True, _verbose=False)
             os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
             self.get_logger().info(f"Downloaded and saved YOLO model to {MODEL_PATH}")
         self.model.to(self.device)
