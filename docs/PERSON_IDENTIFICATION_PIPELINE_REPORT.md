@@ -142,13 +142,6 @@ Managing bounding box coordinates across resolutions required extensive testing:
 
 Each coordinate transformation point was a potential source of misalignment bugs.
 
-### Architecture Refinement
-Through iterative development, I identified and removed redundant components:
-- Initial design had an "identification coordinator" node
-- Analysis revealed its logic was duplicated in face recognition node
-- Simplified architecture by consolidating functionality
-- Reduced system complexity and potential failure points
-
 ## Final System Architecture
 
 ### Complete Pipeline
@@ -198,14 +191,8 @@ The system performs well on modern hardware but could benefit from further optim
 ### Face Recognition Accuracy (When Bug is Fixed)
 The current minimum face size threshold (80 pixels) means distant people may not be identified. A multi-scale approach or different detection models could improve long-range identification.
 
-### Lighting and Angle Sensitivity
-Face recognition accuracy degrades with poor lighting or extreme head angles. Adding face quality assessment before attempting recognition could reduce false matches.
-
 ### System Integration
 The pipeline currently operates independently but would benefit from tighter integration with other robot subsystems (movement, dialogue, memory) for a more cohesive user experience.
-
-### Real-Time Feedback
-Currently, there's limited user feedback when identification fails or is in progress. Adding visual/audio indicators would improve the user experience.
 
 ## Conclusion
 
@@ -230,22 +217,6 @@ This project represents a complete journey from zero knowledge of robotics frame
 
 The evolution from a naive, frame-by-frame implementation to an optimized dual-stream system with intelligent triggering demonstrates deep understanding of both the problem domain and the technical constraints. Each major challenge (dependency conflicts, performance bottlenecks, hardware limitations) required research, experimentation, and creative solutions.
 
-The final system successfully balances multiple competing requirements:
-- Real-time performance vs. accuracy
-- System complexity vs. maintainability
-- Resource usage vs. feature richness
-- Hardware constraints vs. functionality
-
 **Current Status**: While the pipeline architecture is complete and performs well in terms of detection, tracking, and visualization, the face recognition component has an active critical bug producing false similarity scores. This issue is under active investigation and represents the next major debugging challenge. The infrastructure, optimization work, and system design remain valuable regardless, as fixing the recognition bug is primarily about correcting the embedding comparison logic rather than redesigning the architecture.
 
 **Estimated Development Effort**: 200+ hours including learning, research, implementation, debugging, optimization, testing, and documentation. Ongoing debugging for the similarity scoring issue continues.
-
-**Key Skills Developed**:
-- Robotics framework architecture (ROS2)
-- Distributed systems design
-- Computer vision algorithms and optimization
-- Real-time systems engineering
-- Docker containerization
-- Python environment management
-- Hardware driver configuration
-- System profiling and optimization
