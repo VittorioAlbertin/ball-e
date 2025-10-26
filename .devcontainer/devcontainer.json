@@ -13,5 +13,5 @@
     "source=${localWorkspaceFolder}/.venv,target=/home/ubuntu/ml_env,type=bind"
   ],
   "onCreateCommand": "rm -rf /ball-e/ros2_ws/build /ball-e/ros2_ws/log /ball-e/ros2_ws/install",
-  "postCreateCommand": "bash -i -c 'python3 -m venv /home/ubuntu/ml_env && source /home/ubuntu/ml_env/bin/activate && pip3 install -r .devcontainer/requirements.txt && rosdep update --rosdistro=humble && deactivate && source /opt/ros/humble/setup.bash && python3 .devcontainer/colcon_build.py'"
+  "postCreateCommand": "bash -i -c 'python3 -m venv /home/ubuntu/ml_env && source /home/ubuntu/ml_env/bin/activate && pip3 install -r .devcontainer/requirements.txt && deactivate && source /opt/ros/humble/setup.bash && python3 .devcontainer/colcon_build.py'"
 }

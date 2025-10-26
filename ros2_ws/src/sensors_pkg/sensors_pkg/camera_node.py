@@ -10,10 +10,10 @@ class CameraNode(Node):
         super().__init__('camera_node')
 
         # Declare parameters
-        self.declare_parameter('camera_index', 2)  # Default to USB camera (index 2)
+        self.declare_parameter('camera_index', 0)  # Default to USB camera (index 2)
         self.declare_parameter('fps', 30.0)  # Configurable frame rate
-        self.declare_parameter('width', 1920)  # 4K width (3840x2160)
-        self.declare_parameter('height', 1080)  # 4K height
+        self.declare_parameter('width', 3840)  # 4K width (3840x2160)
+        self.declare_parameter('height', 2160)  # 4K height
 
         camera_index = self.get_parameter('camera_index').value
         fps = self.get_parameter('fps').value
@@ -26,14 +26,17 @@ class CameraNode(Node):
         # OpenCV capture
         # Camera 0 = HP laptop camera (/dev/video0)
         # Camera 2 = UVC USB camera (/dev/video2)
-        self.cap = cv2.VideoCapture(camera_index)
+        # sometimes they swap, just check manually with `v4l2 --list-devices` on a terminal
+        # Use V4L2 backend explicitly for better control on Linux
+        self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
 
         if not self.cap.isOpened():
             self.get_logger().error(f"Could not open camera {camera_index}!")
-            self.get_logger().error("Available cameras: 0 (laptop), 2 (USB)")
             return
 
-        # Set resolution
+        # Set resolution and FPS
+        # Note: cap.set() returning True doesn't guarantee the value was accepted
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, fps)
