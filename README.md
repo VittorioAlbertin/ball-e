@@ -187,7 +187,6 @@ ball-e/
 │       │   ├── person_tracker.py
 │       │   ├── person_state_manager.py
 │       │   ├── face_recognition_conditional.py
-│       │   ├── identification_coordinator.py
 │       │   └── visualization_node.py
 │       ├── interaction_pkg/       # People database, enrollment
 │       ├── msgs_interfaces/       # Custom messages and services

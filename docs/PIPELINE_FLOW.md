@@ -263,83 +263,7 @@ Maintains centralized dictionary: `{track_id: PersonState}`
 
 ---
 
-## Step 5: Identification Coordination
-
-**Node:** `identification_coordinator.py`
-**Package:** `perception_pkg`
-**Location:** `ros2_ws/src/perception_pkg/perception_pkg/identification_coordinator.py:23-278`
-
-### Subscriptions
-**Topic 1:** `/person_state/all` (lines 71-76)
-**Topic 2:** `/face_recognition/identity_update` (lines 78-83)
-
-### Processing
-
-#### 5.1 Smart Triggering Rules
-
-**Rule 1: New Unidentified Tracks** (lines 113-121)
-```python
-if person.identity == '' and not person.requires_identification:
-    time_since_first_seen >= new_track_delay (1.0s)
-    → Trigger identification
-```
-- Waits 1 second after first detection (stability check)
-- Prevents premature identification of transient detections
-
-**Rule 2: Confidence Decay** (lines 124-132)
-```python
-if person.identity != '' and person.identity_confidence < 0.5:
-    → Re-identify
-```
-- Handles cases where identity confidence drops
-- Ensures accurate long-term tracking
-
-**Rule 3: Periodic Re-check** (lines 135-144)
-```python
-if person.identity != '' and time_since_last_id >= 60.0s:
-    → Re-identify
-```
-- Re-identifies every 60 seconds
-- Prevents persistent misidentification
-- Adapts to appearance changes (lighting, angle, etc.)
-
-#### 5.2 Rate Limiting (lines 249-260)
-- Maximum: **2 requests per second** (configurable)
-- Prevents overwhelming the face recognition system
-- Maintains 1-second sliding window of request timestamps
-- Defers requests if limit exceeded
-
-#### 5.3 State Tracking
-- `track_first_seen`: When each track was first detected
-- `track_last_identified`: Last identification timestamp per track
-- `pending_requests`: Set of track_ids currently being processed
-- `request_times`: List of request timestamps for rate limiting
-
-#### 5.4 Stale Request Cleanup (lines 172-190)
-- Removes pending requests after 30 seconds timeout
-- Prevents deadlock from failed identifications
-- Runs every 5 seconds
-
-### Service Calls
-**Service:** `/person_state/request_identification`
-**Type:** `msgs_interfaces/srv/RequestIdentification`
-**Location:** Lines 192-247
-
-- Asynchronous calls with callbacks
-- Logs success/failure
-- Records request time for rate limiting
-- Removes from pending on completion or failure
-
-### Parameters
-- `max_requests_per_second`: 2.0 (rate limit)
-- `confidence_threshold`: 0.5 (re-identify below this)
-- `recheck_interval`: 60.0s (periodic re-check)
-- `new_track_delay`: 1.0s (stability wait)
-- `enable_auto_identification`: true (enable/disable auto-triggering)
-
----
-
-## Step 6: Face Recognition (On-Demand)
+## Step 5: Face Recognition (On-Demand)
 
 **Node:** `face_recognition_conditional.py`
 **Package:** `perception_pkg`
@@ -352,7 +276,7 @@ if person.identity != '' and time_since_last_id >= 60.0s:
 
 ### Processing Flow
 
-#### 6.1 Frame Caching (lines 162-169)
+#### 5.1 Frame Caching (lines 162-169)
 ```python
 self.frame_cache = deque(maxlen=10)  # Last 10 frames
 frame_cache.append((timestamp, image, header))
@@ -361,14 +285,20 @@ frame_cache.append((timestamp, image, header))
 - Prevents dropped frames during processing
 - Stores timestamp for synchronization
 
-#### 6.2 Trigger Detection (lines 171-207)
+#### 5.2 Automatic Identification Triggering
+
+This node handles its own smart triggering logic:
 
 **Trigger Sources:**
-1. New tracks: `track.is_new_track == True` (lines 175-181)
-2. Explicit requests: `person.requires_identification == True` (lines 199-207)
-3. Queued identifications from coordinator (lines 184-189)
+1. **New tracks**: Automatically identifies new tracks when `auto_identify_new_tracks=True` (lines 284-289)
+2. **Explicit requests**: Monitors `person.requires_identification` flag (lines 311-313)
+3. **Periodic re-identification**: Re-identifies known persons after `reidentification_interval` seconds (lines 315-323)
 
-#### 6.3 Face Detection in Person ROI (lines 232-311)
+**Parameters:**
+- `auto_identify_new_tracks`: true (automatically identify new tracks)
+- `reidentification_interval`: 30.0s (re-identify known persons periodically)
+
+#### 5.3 Face Detection in Person ROI (lines 232-311)
 
 **Proper Face Detection Using UltraFace:**
 ```python
@@ -401,7 +331,7 @@ face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_
 - Validates bbox is within image bounds
 - Logs detection details for debugging
 
-#### 6.4 Face Embedding Extraction (lines 342-370, 438-460)
+#### 5.4 Face Embedding Extraction (lines 342-370, 438-460)
 
 **Uses Full-Resolution Face Crop:**
 - Face crop extracted from **original camera resolution** (not downscaled)
@@ -424,7 +354,7 @@ face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_
 
 **Performance:** ~50-100ms per face (embedding extraction only)
 
-#### 6.5 Database Matching (lines 373-436)
+#### 5.5 Database Matching (lines 373-436)
 
 **Service Call:** `people_db/recognize_face`
 **Type:** `msgs_interfaces/srv/RecognizeFace`
@@ -443,7 +373,7 @@ face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_
 - Allows continued processing during database query
 - Total latency: **<300ms** (including face detection + embedding + matching)
 
-#### 6.6 State Update (lines 397, 410)
+#### 5.6 State Update (lines 397, 410)
 
 **Service Call:** `/person_state/update_identity`
 **Type:** `msgs_interfaces/srv/UpdateIdentity`
@@ -501,7 +431,7 @@ face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_
 
 ---
 
-## Step 7: Database Matching
+## Step 6: Database Matching
 
 **Node:** `people_database_node.py`
 **Package:** `interaction_pkg`
@@ -514,7 +444,7 @@ face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_
 
 ### Processing
 
-#### 7.1 Database Structure
+#### 6.1 Database Structure
 - **Database:** SQLite at `/ball-e/ros2_ws/robot_data/people.db`
 - **Backend:** `interaction_pkg/people_database.py`
 - **Schema:**
@@ -531,7 +461,7 @@ face_x, face_y, face_w, face_h = convert_to_image_coords(best_face_bbox, person_
   )
   ```
 
-#### 7.2 Face Matching (line 100)
+#### 6.2 Face Matching (line 100)
 ```python
 match = db.find_similar_face(embedding, threshold)
 ```
@@ -551,7 +481,7 @@ similarity = dot(query_embedding, stored_embedding)
 3. Find maximum similarity
 4. Return match if `max_similarity >= threshold`
 
-#### 7.3 Response Handling (lines 102-118)
+#### 6.3 Response Handling (lines 102-118)
 
 **If Match Found:**
 - Returns person info: `id, name, last_seen, interaction_count, preferences, notes`
@@ -586,7 +516,7 @@ similarity = dot(query_embedding, stored_embedding)
 
 ---
 
-## Step 8: Visualization & Annotation
+## Step 7: Visualization & Annotation
 
 **Node:** `visualization_node.py`
 **Package:** `perception_pkg`
@@ -598,7 +528,7 @@ similarity = dot(query_embedding, stored_embedding)
 
 ### Processing
 
-#### 8.1 Image Composition (lines 89-110)
+#### 7.1 Image Composition (lines 89-110)
 ```python
 annotated = current_image.copy()
 _draw_statistics(annotated, msg)      # Top-left stats
@@ -607,7 +537,7 @@ for person in msg.persons:
 publish(annotated)
 ```
 
-#### 8.2 Per-Person Annotations (lines 112-208)
+#### 7.2 Per-Person Annotations (lines 112-208)
 
 **Bounding Box** (line 133):
 - Color: HSV hue rotation based on `track_id` (lines 246-270)
@@ -647,7 +577,7 @@ Multi-line labels with colored backgrounds:
 - Gray background, colored fill matches track color
 - Height: 5 pixels
 
-#### 8.3 Statistics Overlay (lines 210-244)
+#### 7.3 Statistics Overlay (lines 210-244)
 
 **Location:** Top-left corner
 

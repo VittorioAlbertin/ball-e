@@ -49,8 +49,7 @@ Camera → YOLO → ByteTrack → State Manager → Coordinator
 ### KEY COMPONENTS:
 - **person_tracker.py**: ByteTrack implementation
 - **person_state_manager.py**: Centralized state management
-- **face_recognition_conditional.py**: On-demand face recognition
-- **identification_coordinator.py**: Smart triggering logic
+- **face_recognition_conditional.py**: On-demand face recognition with auto-identification
 - **visualization_node.py**: Rich visual feedback
 
 ### FUTURE INTEGRATION POINTS:

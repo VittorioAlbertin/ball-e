@@ -335,8 +335,8 @@ ros2 launch robot_bringup face_recognition_conditional_launch.py \
 **Diagnosis**:
 
 ```bash
-# Check coordinator
-ros2 node info /identification_coordinator
+# Check face recognition node
+ros2 node info /face_recognition_conditional
 
 # Check person states
 ros2 topic echo /person_state/all
@@ -344,21 +344,21 @@ ros2 topic echo /person_state/all
 
 **Solutions**:
 
-1. **Coordinator not running**:
+1. **Face recognition node not running**:
 ```bash
-ros2 run perception_pkg identification_coordinator
+ros2 run perception_pkg face_recognition_conditional
 ```
 
 2. **Auto-identification disabled**:
 ```bash
-ros2 launch robot_bringup ball_e_full_system_launch.py \
-    # Ensure enable_auto_identification is true in coordinator params
+# Ensure auto_identify_new_tracks is true
+ros2 param set /face_recognition_conditional auto_identify_new_tracks true
 ```
 
-3. **Rate limit hit**:
+3. **Re-identification interval too long**:
 ```bash
-# Increase rate limit
-ros2 param set /identification_coordinator max_requests_per_second 5.0
+# Reduce re-identification interval (default: 30.0s)
+ros2 param set /face_recognition_conditional reidentification_interval 15.0
 ```
 
 ---

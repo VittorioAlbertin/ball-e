@@ -51,8 +51,7 @@ rviz2
 | YOLO Node | perception_pkg | Object detection (YOLO) | [docs](../ros2_ws/src/perception_pkg/docs/yolo_node.md) |
 | Person Tracker | perception_pkg | ByteTrack multi-person tracking | [docs](../ros2_ws/src/perception_pkg/docs/person_tracker.md) |
 | Person State Manager | perception_pkg | Centralized person state | [docs](../ros2_ws/src/perception_pkg/docs/person_state_manager.md) |
-| Face Recognition (Conditional) | perception_pkg | On-demand face recognition | [docs](../ros2_ws/src/perception_pkg/docs/face_recognition_conditional.md) |
-| Identification Coordinator | perception_pkg | Smart identification triggers | [docs](../ros2_ws/src/perception_pkg/docs/identification_coordinator.md) |
+| Face Recognition (Conditional) | perception_pkg | On-demand face recognition with auto-identification | [docs](../ros2_ws/src/perception_pkg/docs/face_recognition_conditional.md) |
 | Visualization Node | perception_pkg | Annotated video output | [docs](../ros2_ws/src/perception_pkg/docs/visualization_node.md) |
 
 ### Interaction Nodes

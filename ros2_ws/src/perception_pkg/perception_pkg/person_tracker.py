@@ -125,6 +125,7 @@ class PersonTrackerNode(Node):
         self.get_logger().info(f'  iou_threshold: {self.iou_threshold}')
         self.get_logger().info(f'  high_conf_threshold: {self.high_conf_thresh}')
         self.get_logger().info(f'  low_conf_threshold: {self.low_conf_thresh}')
+        self.get_logger().info('Outputting tracks in low-res coordinates (640x360)')
 
         # Track management
         self.tracks = []
@@ -298,6 +299,7 @@ class PersonTrackerNode(Node):
             track_msg.header = header
 
             track_msg.track_id = track.track_id
+            # Output bbox in low-res coordinates (640x360)
             track_msg.bbox_x = float(track.bbox[0])
             track_msg.bbox_y = float(track.bbox[1])
             track_msg.bbox_w = float(track.bbox[2])

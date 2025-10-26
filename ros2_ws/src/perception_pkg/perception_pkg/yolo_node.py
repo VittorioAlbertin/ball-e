@@ -23,9 +23,11 @@ class YoloNode(Node):
         self.get_logger().info(f"Using device: {self.device}")
         self.latest_msg = None
         # Subscribers and Publishers
+        # Subscribe to low-res stream for faster processing (640x360)
         self.subscription = self.create_subscription(
-            Image, '/camera/image_raw', self.image_callback, 1
+            Image, '/camera/image_low_res', self.image_callback, 1
         )
+        self.get_logger().info("Subscribed to /camera/image_low_res (low-resolution stream for YOLO)")
         self.detection_pub = self.create_publisher(
             Detection2DArray, '/yolo/detections', 1
         )
@@ -73,7 +75,7 @@ class YoloNode(Node):
                     img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_GRAY2RGB)
                 else:
                     img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                results = self.model(img_rgb, size=640)#.to(self.device)  # you can adjust size
+                results = self.model(img_rgb, size=640)  # you can adjust size
                 self.publish_results(results, msg.header, cv_image)
             except Exception as e:
                 self.get_logger().error(f"YOLO processing error: {e}")

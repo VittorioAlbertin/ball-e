@@ -9,7 +9,7 @@ def generate_launch_description():
 
     Camera → YOLO → Person Tracker → Person State Manager
                                             ↓
-                    Identification Coordinator → Face Recognition (conditional)
+                                Face Recognition (conditional)
                                             ↓
                                     Visualization Node
                                             ↓
@@ -18,8 +18,7 @@ def generate_launch_description():
     This is the full optimized pipeline with:
     - Persistent person tracking (ByteTrack)
     - Centralized state management
-    - Smart identification coordination
-    - On-demand face recognition
+    - On-demand face recognition with auto-identification
     - Rich visualization with track IDs and identities
     """
 
@@ -49,19 +48,6 @@ def generate_launch_description():
         description='Seconds before removing inactive persons'
     )
 
-    # Coordinator parameters
-    max_requests_per_second_arg = DeclareLaunchArgument(
-        'max_requests_per_second',
-        default_value='2.0',
-        description='Maximum identification requests per second'
-    )
-
-    confidence_threshold_arg = DeclareLaunchArgument(
-        'confidence_threshold',
-        default_value='0.5',
-        description='Re-identify below this confidence'
-    )
-
     # Face recognition parameters
     recognition_threshold_arg = DeclareLaunchArgument(
         'recognition_threshold',
@@ -81,8 +67,6 @@ def generate_launch_description():
         min_hits_arg,
         iou_threshold_arg,
         cleanup_timeout_arg,
-        max_requests_per_second_arg,
-        confidence_threshold_arg,
         recognition_threshold_arg,
         reidentification_interval_arg,
 
@@ -130,20 +114,6 @@ def generate_launch_description():
         ),
 
         # ========== IDENTIFICATION ==========
-        Node(
-            package='perception_pkg',
-            executable='identification_coordinator',
-            name='identification_coordinator',
-            output='screen',
-            parameters=[{
-                'max_requests_per_second': LaunchConfiguration('max_requests_per_second'),
-                'confidence_threshold': LaunchConfiguration('confidence_threshold'),
-                'recheck_interval': LaunchConfiguration('reidentification_interval'),
-                'new_track_delay': 1.0,
-                'enable_auto_identification': True,
-            }]
-        ),
-
         Node(
             package='perception_pkg',
             executable='face_recognition_conditional',

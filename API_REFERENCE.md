@@ -390,23 +390,9 @@ string message
 - `cleanup_timeout` (float, default: 5.0)
 - `publish_rate` (float, default: 10.0)
 
-### identification_coordinator
-
-**Subscribed Topics**:
-- `/person_state/all` (PersonStateArray)
-- `/face_recognition/identity_update` (IdentityUpdate)
-
-**Services Called**:
-- `/person_state/request_identification` (RequestIdentification)
-
-**Parameters**:
-- `max_requests_per_second` (float, default: 2.0)
-- `confidence_threshold` (float, default: 0.5)
-- `recheck_interval` (float, default: 60.0)
-- `new_track_delay` (float, default: 1.0)
-- `enable_auto_identification` (bool, default: true)
-
 ### face_recognition_conditional
+
+On-demand face recognition node with automatic identification triggering. Handles new track detection, periodic re-identification, and explicit identification requests.
 
 **Subscribed Topics**:
 - `/camera/image_raw` (Image)
@@ -421,12 +407,12 @@ string message
 - `/person_state/update_identity` (UpdateIdentity)
 
 **Parameters**:
-- `recognition_threshold` (float, default: 0.6)
-- `min_face_size` (int, default: 20)
-- `max_face_size` (int, default: 400)
-- `frame_cache_size` (int, default: 10)
-- `reidentification_interval` (float, default: 30.0)
-- `auto_identify_new_tracks` (bool, default: true)
+- `recognition_threshold` (float, default: 0.6) - Minimum similarity for face matching
+- `min_face_size` (int, default: 20) - Minimum face size in pixels
+- `max_face_size` (int, default: 400) - Maximum face size in pixels
+- `frame_cache_size` (int, default: 10) - Number of frames to cache
+- `reidentification_interval` (float, default: 30.0) - Seconds between re-identifications
+- `auto_identify_new_tracks` (bool, default: true) - Automatically identify new tracks
 
 ### visualization_node
 

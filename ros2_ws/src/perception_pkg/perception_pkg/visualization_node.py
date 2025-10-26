@@ -53,11 +53,12 @@ class VisualizationNode(Node):
         self.get_logger().info(f'  show_identity: {self.show_identity}')
         self.get_logger().info(f'  show_confidence: {self.show_confidence}')
         self.get_logger().info(f'  show_status: {self.show_status}')
+        self.get_logger().info('Using low-res stream (640x360 @ 30 Hz) for smooth visualization')
 
         # Subscribers
         self.image_sub = self.create_subscription(
             Image,
-            '/camera/image_raw',
+            '/camera/image_low_res',
             self.image_callback,
             10
         )
@@ -113,7 +114,7 @@ class VisualizationNode(Node):
         """Draw a single person's annotation on the image."""
         track_id = person.track_id
 
-        # Get bounding box
+        # Get bounding box (already in low-res coordinates: 640x360)
         x = int(person.bbox_x)
         y = int(person.bbox_y)
         w = int(person.bbox_w)

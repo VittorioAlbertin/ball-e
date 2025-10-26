@@ -53,6 +53,11 @@ class FaceRecognitionConditional(Node):
         self.declare_parameter('reidentification_interval', 30.0)  # Re-ID every 30 seconds
         self.declare_parameter('auto_identify_new_tracks', True)  # Auto-identify new tracks
         self.declare_parameter('use_gpu', True)  # Use GPU acceleration if available
+        # Dual-stream resolution parameters
+        self.declare_parameter('low_res_width', 640)
+        self.declare_parameter('low_res_height', 360)
+        self.declare_parameter('high_res_width', 1920)
+        self.declare_parameter('high_res_height', 1080)
 
         self.face_detector_model_path = self.get_parameter('face_detector_model_path').value
         self.face_detector_model_url = self.get_parameter('face_detector_model_url').value
@@ -65,6 +70,14 @@ class FaceRecognitionConditional(Node):
         self.reidentification_interval = self.get_parameter('reidentification_interval').value
         self.auto_identify_new_tracks = self.get_parameter('auto_identify_new_tracks').value
         self.use_gpu = self.get_parameter('use_gpu').value
+
+        # Calculate scaling factors for coordinate transformation
+        self.low_res_width = self.get_parameter('low_res_width').value
+        self.low_res_height = self.get_parameter('low_res_height').value
+        self.high_res_width = self.get_parameter('high_res_width').value
+        self.high_res_height = self.get_parameter('high_res_height').value
+        self.scale_x = self.high_res_width / self.low_res_width
+        self.scale_y = self.high_res_height / self.low_res_height
 
         # Detect GPU availability
         self.gpu_available = False
@@ -82,11 +95,15 @@ class FaceRecognitionConditional(Node):
         self.get_logger().info('Conditional Face Recognition Node initializing...')
         self.get_logger().info(f'  face_detection_threshold: {self.face_detection_threshold}')
         self.get_logger().info(f'  recognition_threshold: {self.recognition_threshold}')
-        self.get_logger().info(f'  min_face_size: {self.min_face_size}px')
+        self.get_logger().info(f'  min_face_size: {self.min_face_size}px (low-res)')
         self.get_logger().info(f'  frame_cache_size: {self.frame_cache_size}')
         self.get_logger().info(f'  reidentification_interval: {self.reidentification_interval}s')
         self.get_logger().info(f'  auto_identify_new_tracks: {self.auto_identify_new_tracks}')
         self.get_logger().info(f'  use_gpu: {self.use_gpu} (available: {self.gpu_available})')
+        self.get_logger().info(f'Dual-stream optimization:')
+        self.get_logger().info(f'  Low-res ({self.low_res_width}x{self.low_res_height}) for face detection')
+        self.get_logger().info(f'  High-res ({self.high_res_width}x{self.high_res_height}) for face crops')
+        self.get_logger().info(f'  Scale factors: x={self.scale_x:.2f}, y={self.scale_y:.2f}')
 
         # Download models if needed
         self._ensure_model_exists(self.face_detector_model_path, self.face_detector_model_url, "face detector")
@@ -129,8 +146,9 @@ class FaceRecognitionConditional(Node):
             self.get_logger().error(f"Failed to load embedding model: {e}")
             raise
 
-        # Frame cache for async processing (stores full resolution images)
-        self.frame_cache = deque(maxlen=self.frame_cache_size)
+        # Dual frame caches for async processing
+        self.frame_cache_high_res = deque(maxlen=self.frame_cache_size)  # High-res for face crops
+        self.frame_cache_low_res = deque(maxlen=self.frame_cache_size)   # Low-res for face detection
 
         # Track last identification times for re-identification
         self.last_identification_time = {}  # {track_id: timestamp}
@@ -167,11 +185,18 @@ class FaceRecognitionConditional(Node):
                 raise RuntimeError('Required service person_state/update_identity not available')
             self.get_logger().info('  Still waiting for person_state/update_identity...')
 
-        # Subscribers
-        self.image_sub = self.create_subscription(
+        # Subscribers (dual-stream)
+        self.image_sub_high_res = self.create_subscription(
             Image,
             '/camera/image_raw',
-            self.image_callback,
+            self.image_callback_high_res,
+            10
+        )
+
+        self.image_sub_low_res = self.create_subscription(
+            Image,
+            '/camera/image_low_res',
+            self.image_callback_low_res,
             10
         )
 
@@ -269,14 +294,23 @@ class FaceRecognitionConditional(Node):
             self.get_logger().error(f"Failed to download {model_name} model: {e}")
             raise
 
-    def image_callback(self, msg):
-        """Cache incoming camera frames (FULL RESOLUTION)."""
+    def image_callback_high_res(self, msg):
+        """Cache incoming high-resolution camera frames (1920x1080)."""
         try:
             image = rnp.numpify(msg)
             timestamp = self.get_clock().now()
-            self.frame_cache.append((timestamp, image, msg.header))
+            self.frame_cache_high_res.append((timestamp, image, msg.header))
         except Exception as e:
-            self.get_logger().error(f"Failed to cache image: {e}")
+            self.get_logger().error(f"Failed to cache high-res image: {e}")
+
+    def image_callback_low_res(self, msg):
+        """Cache incoming low-resolution camera frames (640x360)."""
+        try:
+            image = rnp.numpify(msg)
+            timestamp = self.get_clock().now()
+            self.frame_cache_low_res.append((timestamp, image, msg.header))
+        except Exception as e:
+            self.get_logger().error(f"Failed to cache low-res image: {e}")
 
     def track_callback(self, msg):
         """Process track updates and trigger identification for new tracks or queued tracks."""
@@ -322,40 +356,54 @@ class FaceRecognitionConditional(Node):
                     self.get_logger().info(f'Re-identification interval expired for track_id={track_id}')
                     self.identification_queue[track_id] = current_time
 
-    def _get_synchronized_frame(self, track_header):
+    def _get_synchronized_frames(self, track_header):
         """
-        Get frame with timestamp closest to track detection time.
+        Get both high-res and low-res frames with timestamp closest to track detection time.
 
         Args:
             track_header: Header from PersonTrackArray with timestamp
 
         Returns:
-            Tuple of (timestamp, image, header) from frame cache, or None if cache is empty
+            Tuple of (low_res_frame, high_res_frame) where each is (timestamp, image, header),
+            or (None, None) if caches are empty
         """
-        if len(self.frame_cache) == 0:
-            return None
+        if len(self.frame_cache_low_res) == 0 or len(self.frame_cache_high_res) == 0:
+            return None, None
 
         track_time_ns = track_header.stamp.sec * 1e9 + track_header.stamp.nanosec
 
-        best_match = None
-        min_time_diff = float('inf')
-
-        for cached_timestamp, cached_image, cached_header in self.frame_cache:
+        # Find best matching low-res frame
+        best_low_res = None
+        min_time_diff_low = float('inf')
+        for cached_timestamp, cached_image, cached_header in self.frame_cache_low_res:
             cached_time_ns = cached_header.stamp.sec * 1e9 + cached_header.stamp.nanosec
             time_diff = abs(cached_time_ns - track_time_ns)
+            if time_diff < min_time_diff_low:
+                min_time_diff_low = time_diff
+                best_low_res = (cached_timestamp, cached_image, cached_header)
 
-            if time_diff < min_time_diff:
-                min_time_diff = time_diff
-                best_match = (cached_timestamp, cached_image, cached_header)
+        # Find best matching high-res frame
+        best_high_res = None
+        min_time_diff_high = float('inf')
+        for cached_timestamp, cached_image, cached_header in self.frame_cache_high_res:
+            cached_time_ns = cached_header.stamp.sec * 1e9 + cached_header.stamp.nanosec
+            time_diff = abs(cached_time_ns - track_time_ns)
+            if time_diff < min_time_diff_high:
+                min_time_diff_high = time_diff
+                best_high_res = (cached_timestamp, cached_image, cached_header)
 
-        if best_match and min_time_diff < 200e6:  # Within 200ms tolerance
-            self.get_logger().debug(f'Matched frame with time_diff={min_time_diff/1e6:.1f}ms')
-            return best_match
-        else:
-            self.get_logger().warning(
-                f'No matching frame found (diff={min_time_diff/1e6:.1f}ms), using latest as fallback'
-            )
-            return self.frame_cache[-1]  # Fallback to latest
+        # Use fallback if no good match
+        if not best_low_res or min_time_diff_low >= 200e6:
+            best_low_res = self.frame_cache_low_res[-1]
+        if not best_high_res or min_time_diff_high >= 200e6:
+            best_high_res = self.frame_cache_high_res[-1]
+
+        self.get_logger().debug(
+            f'Matched frames: low-res_diff={min_time_diff_low/1e6:.1f}ms, '
+            f'high-res_diff={min_time_diff_high/1e6:.1f}ms'
+        )
+
+        return best_low_res, best_high_res
 
     def _detect_face_in_roi(self, image, bbox):
         """
@@ -471,46 +519,54 @@ class FaceRecognitionConditional(Node):
         """
         start_time = time.time()
 
-        # Get synchronized frame from cache (FULL RESOLUTION) matching track timestamp
-        frame_data = self._get_synchronized_frame(track_header)
-        if frame_data is None:
+        # Get synchronized frames from both caches matching track timestamp
+        low_res_data, high_res_data = self._get_synchronized_frames(track_header)
+        if low_res_data is None or high_res_data is None:
             self.get_logger().warning(f'No frames in cache for track_id={track_id}')
             return
 
-        timestamp, image, header = frame_data
+        _, low_res_image, _ = low_res_data
+        timestamp, high_res_image, header = high_res_data
 
-        # Get person bounding box
-        person_bbox = [track.bbox_x, track.bbox_y, track.bbox_w, track.bbox_h]
+        # Get person bounding box (in low-res coordinates: 640x360)
+        person_bbox_low = [track.bbox_x, track.bbox_y, track.bbox_w, track.bbox_h]
 
-        # Detect face in person ROI
+        # Detect face in person ROI using LOW-RES image
         face_detection_start = time.time()
-        face_bbox = self._detect_face_in_roi(image, person_bbox)
+        face_bbox_low = self._detect_face_in_roi(low_res_image, person_bbox_low)
         face_detection_time = (time.time() - face_detection_start) * 1000
 
-        if face_bbox is None:
+        if face_bbox_low is None:
             self.get_logger().warning(
                 f'No face detected in track_id={track_id} '
-                f'(person_bbox=[{int(person_bbox[0])},{int(person_bbox[1])},{int(person_bbox[2])},{int(person_bbox[3])}])'
+                f'(person_bbox_low=[{int(person_bbox_low[0])},{int(person_bbox_low[1])},{int(person_bbox_low[2])},{int(person_bbox_low[3])}])'
             )
             # Remove from queue so we can retry later
             if track_id in self.identification_queue:
                 del self.identification_queue[track_id]
             return
 
-        # Extract face crop from FULL RESOLUTION image
-        face_x, face_y, face_w, face_h = face_bbox
-        face_x_min = max(0, int(face_x))
-        face_y_min = max(0, int(face_y))
-        face_x_max = min(image.shape[1], int(face_x + face_w))
-        face_y_max = min(image.shape[0], int(face_y + face_h))
+        # Scale face bbox from low-res to high-res coordinates
+        face_x_low, face_y_low, face_w_low, face_h_low = face_bbox_low
+        face_x_high = face_x_low * self.scale_x
+        face_y_high = face_y_low * self.scale_y
+        face_w_high = face_w_low * self.scale_x
+        face_h_high = face_h_low * self.scale_y
 
-        face_crop = image[face_y_min:face_y_max, face_x_min:face_x_max]
+        # Extract face crop from HIGH-RES image using scaled coordinates
+        face_x_min = max(0, int(face_x_high))
+        face_y_min = max(0, int(face_y_high))
+        face_x_max = min(high_res_image.shape[1], int(face_x_high + face_w_high))
+        face_y_max = min(high_res_image.shape[0], int(face_y_high + face_h_high))
+
+        face_crop = high_res_image[face_y_min:face_y_max, face_x_min:face_x_max]
 
         # Log extraction details
         self.get_logger().info(
-            f'Track {track_id}: Person box=[{int(person_bbox[0])},{int(person_bbox[1])},{int(person_bbox[2])},{int(person_bbox[3])}] '
-            f'({int(person_bbox[2])}x{int(person_bbox[3])}px), '
-            f'Face detected at=[{face_x_min},{face_y_min},{face_x_max},{face_y_max}] '
+            f'Track {track_id}: Person box_low=[{int(person_bbox_low[0])},{int(person_bbox_low[1])},{int(person_bbox_low[2])},{int(person_bbox_low[3])}] '
+            f'({int(person_bbox_low[2])}x{int(person_bbox_low[3])}px), '
+            f'Face detected_low=[{int(face_x_low)},{int(face_y_low)},{int(face_w_low)},{int(face_h_low)}], '
+            f'Face crop_high=[{face_x_min},{face_y_min},{face_x_max},{face_y_max}] '
             f'({face_x_max - face_x_min}x{face_y_max - face_y_min}px), '
             f'detection_time={face_detection_time:.1f}ms'
         )
@@ -555,7 +611,7 @@ class FaceRecognitionConditional(Node):
                     identity_msg.confidence = response.similarity  # USE ACTUAL SIMILARITY
                     identity_msg.face_embedding = embedding.tolist()
                     identity_msg.processing_time_ms = float(total_time)
-                    identity_msg.face_size_pixels = float(max(face_w, face_h))
+                    identity_msg.face_size_pixels = float(max(face_w_high, face_h_high))
                     identity_msg.face_quality_ok = True  # Passed face detection
                     identity_msg.found_in_database = response.found
                     identity_msg.person_id = response.person_id

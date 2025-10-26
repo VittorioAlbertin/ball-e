@@ -224,7 +224,6 @@ You should see output indicating all nodes are starting:
 [INFO] [yolo_node]: YOLO node initialized
 [INFO] [person_tracker]: Person Tracker initialized
 [INFO] [person_state_manager]: Person State Manager started
-[INFO] [identification_coordinator]: Identification Coordinator started
 [INFO] [face_recognition_conditional]: Conditional Face Recognition Node started
 [INFO] [visualization_node]: Visualization Node started
 ```
