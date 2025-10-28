@@ -1,5 +1,0 @@
-int32 person_id
-string preferences_json
----
-bool success
-string message

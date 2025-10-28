@@ -1,9 +1,0 @@
-# EnrollPendingFace.srv
-# Service to enroll the currently pending unknown face
-
-string name
-string notes
----
-bool success
-string message
-int32 person_id

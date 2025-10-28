@@ -1,4 +1,0 @@
-int32 person_id
----
-bool success
-string message
