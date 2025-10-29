@@ -168,43 +168,6 @@ The DevContainer uses a sophisticated dual-Python-environment build system to ha
 
 ---
 
-### Option B: Manual Installation
-
-#### Step 1: Clone and Build
-
-```bash
-# Navigate to your workspace
-cd ~/Documents/ball-e
-
-# Build the ROS2 workspace
-cd ros2_ws
-colcon build --symlink-install
-
-# Source the workspace
-source install/setup.bash
-
-# Add to your .bashrc for convenience
-echo "source ~/Documents/ball-e/ros2_ws/install/setup.bash" >> ~/.bashrc
-```
-
-#### Step 2: Download Models
-
-The face recognition models will be downloaded automatically on first run. Alternatively, download them manually:
-
-```bash
-cd ~/Documents/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models
-
-# Face embedding model (~100MB)
-wget https://github.com/onnx/models/raw/main/validated/vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx \
-     -O facenet.onnx
-```
-
-#### Step 3: Initialize Database
-
-```bash
-# The people database will be created automatically on first run
-# Default location: ~/Documents/ball-e/ros2_ws/robot_data/people.db
-```
 
 ## Running Ball-e
 
@@ -224,7 +187,7 @@ You should see output indicating all nodes are starting:
 [INFO] [yolo_node]: YOLO node initialized
 [INFO] [person_tracker]: Person Tracker initialized
 [INFO] [person_state_manager]: Person State Manager started
-[INFO] [face_recognition_conditional]: Conditional Face Recognition Node started
+[INFO] [face_recognition]: Face Recognition Node started
 [INFO] [visualization_node]: Visualization Node started
 ```
 
@@ -247,23 +210,7 @@ In RViz2, you'll see:
 
 ### Using the Enrollment CLI
 
-```bash
-# Run the enrollment tool
-ros2 run interaction_pkg enroll_face_cli
-```
-
-Follow the prompts:
-1. Position your face in front of the camera
-2. Press 'c' to capture
-3. Enter your name when prompted
-4. Face will be added to the database
-
-### Verify Enrollment
-
-```bash
-# Check the database
-cat ~/Documents/ball-e/ros2_ws/src/interaction_pkg/people_database.json
-```
+todo
 
 ## Configuration
 
@@ -294,14 +241,6 @@ ros2 launch robot_bringup ball_e_full_system_launch.py \
 |-----------|---------|-------------|
 | `cleanup_timeout` | 5.0 | Seconds before removing inactive persons |
 | `publish_rate` | 10.0 | Hz for publishing states |
-
-#### Identification Coordination
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_requests_per_second` | 2.0 | Rate limit for identifications |
-| `confidence_threshold` | 0.5 | Re-identify below this confidence |
-| `reidentification_interval` | 60.0 | Seconds before re-identifying |
 
 #### Face Recognition
 
