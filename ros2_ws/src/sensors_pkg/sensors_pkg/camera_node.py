@@ -10,14 +10,13 @@ class CameraNode(Node):
         super().__init__('camera_node')
 
         # Declare parameters
-        self.declare_parameter('camera_index', 2)  # Default to USB camera (index 2)
+        self.declare_parameter('camera_index', 0)  # Default to laptop camera (index 0)
         self.declare_parameter('fps', 30.0)  # Configurable frame rate
         self.declare_parameter('width', 1920)  # High-res width
         self.declare_parameter('height', 1080)  # High-res height
         self.declare_parameter('low_res_width', 640)  # Low-res width for YOLO
         self.declare_parameter('low_res_height', 360)  # Low-res height for YOLO
-        self.declare_parameter('high_res_fps', 10.0)  # High-res publish rate
-        self.declare_parameter('low_res_fps', 30.0)  # Low-res publish rate
+        self.declare_parameter('publish_fps', 30.0)  # Publish rate for both streams
 
         camera_index = self.get_parameter('camera_index').value
         fps = self.get_parameter('fps').value
@@ -25,8 +24,7 @@ class CameraNode(Node):
         height = self.get_parameter('height').value
         low_res_width = self.get_parameter('low_res_width').value
         low_res_height = self.get_parameter('low_res_height').value
-        high_res_fps = self.get_parameter('high_res_fps').value
-        low_res_fps = self.get_parameter('low_res_fps').value
+        publish_fps = self.get_parameter('publish_fps').value
 
         # Store low-res dimensions for callbacks
         self.low_res_width = low_res_width
@@ -63,25 +61,18 @@ class CameraNode(Node):
         # Bridge between cv2 and ROS images
         self.bridge = CvBridge()
 
-        # Shared frame cache for dual-stream publishing
-        self.latest_frame = None
-        self.frame_lock = False  # Simple lock to prevent race conditions
-
-        # Capture timer at camera FPS (captures frames continuously)
-        timer_fps = actual_fps if actual_fps > 0 else fps
-        self.capture_timer = self.create_timer(1.0/timer_fps, self.capture_callback)
-
-        # Publishing timers at different rates
-        self.high_res_timer = self.create_timer(1.0/high_res_fps, self.high_res_callback)
-        self.low_res_timer = self.create_timer(1.0/low_res_fps, self.low_res_callback)
+        # Single timer for synchronized dual-stream publishing
+        # Both streams published at same rate with same timestamp
+        self.publish_timer = self.create_timer(1.0/publish_fps, self.publish_callback)
 
         # Log camera configuration
         self.get_logger().info(f"Camera {camera_index} opened successfully")
         self.get_logger().info(f"Requested: {width}x{height} @ {fps} fps")
         self.get_logger().info(f"Actual:    {actual_width}x{actual_height} @ {actual_fps} fps")
-        self.get_logger().info(f"Dual-stream mode:")
-        self.get_logger().info(f"  High-res: {width}x{height} @ {high_res_fps} Hz → /camera/image_raw")
-        self.get_logger().info(f"  Low-res:  {low_res_width}x{low_res_height} @ {low_res_fps} Hz → /camera/image_low_res")
+        self.get_logger().info(f"Dual-stream mode (synchronized):")
+        self.get_logger().info(f"  High-res: {width}x{height} @ {publish_fps} Hz → /camera/image_raw")
+        self.get_logger().info(f"  Low-res:  {low_res_width}x{low_res_height} @ {publish_fps} Hz → /camera/image_low_res")
+        self.get_logger().info(f"  Both streams share identical timestamps")
 
         if actual_width != width or actual_height != height:
             self.get_logger().warning(
@@ -89,46 +80,35 @@ class CameraNode(Node):
             )
             self.get_logger().warning("Try: 3840x2160, 2560x1440, 1920x1080, 1280x720, or 640x480")
 
-    def capture_callback(self):
-        """Capture frames from camera at full FPS."""
-        if self.frame_lock:
-            return  # Skip if previous frame still being processed
-
+    def publish_callback(self):
+        """Capture and publish both high-res and low-res frames with same timestamp."""
+        # Capture frame from camera
         ret, frame = self.cap.read()
         if not ret or frame is None:
             self.get_logger().warn("Failed to capture frame", throttle_duration_sec=5.0)
             return
 
-        self.frame_lock = True
-        self.latest_frame = frame.copy()
-        self.frame_lock = False
-
-    def high_res_callback(self):
-        """Publish high-resolution frame at 10 Hz for face recognition."""
-        if self.latest_frame is None or self.frame_lock:
-            return
-
         try:
-            # Publish full resolution frame
-            msg = self.bridge.cv2_to_imgmsg(self.latest_frame, encoding='bgr8')
-            self.publisher_raw.publish(msg)
-        except Exception as e:
-            self.get_logger().error(f"Failed to publish high-res frame: {e}", throttle_duration_sec=5.0)
+            # Get current timestamp - this will be shared by both streams
+            timestamp = self.get_clock().now().to_msg()
 
-    def low_res_callback(self):
-        """Publish low-resolution frame at 30 Hz for YOLO/tracking."""
-        if self.latest_frame is None or self.frame_lock:
-            return
+            # Publish high-resolution frame
+            high_res_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+            high_res_msg.header.stamp = timestamp
+            high_res_msg.header.frame_id = 'camera_high_res'
+            self.publisher_raw.publish(high_res_msg)
 
-        try:
             # Resize to low resolution
-            low_res_frame = cv2.resize(self.latest_frame, (self.low_res_width, self.low_res_height))
+            low_res_frame = cv2.resize(frame, (self.low_res_width, self.low_res_height))
 
-            # Publish low resolution frame
-            msg = self.bridge.cv2_to_imgmsg(low_res_frame, encoding='bgr8')
-            self.publisher_low_res.publish(msg)
+            # Publish low-resolution frame with SAME timestamp
+            low_res_msg = self.bridge.cv2_to_imgmsg(low_res_frame, encoding='bgr8')
+            low_res_msg.header.stamp = timestamp
+            low_res_msg.header.frame_id = 'camera_low_res'
+            self.publisher_low_res.publish(low_res_msg)
+
         except Exception as e:
-            self.get_logger().error(f"Failed to publish low-res frame: {e}", throttle_duration_sec=5.0)
+            self.get_logger().error(f"Failed to publish frames: {e}", throttle_duration_sec=5.0)
 
     def destroy_node(self):
         # Release camera when shutting down

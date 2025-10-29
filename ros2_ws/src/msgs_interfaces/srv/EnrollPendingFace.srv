@@ -1,0 +1,14 @@
+# EnrollPendingFace.srv
+# Service to enroll a new person from a tracked face
+
+# Request
+int32 track_id
+string person_name
+string notes
+
+---
+
+# Response
+bool success
+int32 person_id  # Newly created person ID
+string message

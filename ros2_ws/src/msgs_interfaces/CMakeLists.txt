@@ -33,6 +33,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PersonState.msg"
   "msg/PersonStateArray.msg"
   "msg/IdentityUpdate.msg"
+  "msg/IdentificationRequest.msg"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

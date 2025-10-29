@@ -1,0 +1,12 @@
+# UpdatePreferences.srv
+# Service to update person preferences
+
+# Request
+int32 person_id
+string preferences_json  # JSON string with preferences
+
+---
+
+# Response
+bool success
+string message

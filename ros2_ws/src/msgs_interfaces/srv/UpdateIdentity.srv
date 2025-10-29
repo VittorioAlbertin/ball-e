@@ -1,0 +1,14 @@
+# UpdateIdentity.srv
+# Service to update the identity of a tracked person
+
+# Request
+int32 track_id
+string identity  # Person name or 'unknown'
+float32 confidence
+int32 person_id  # Database ID or -1
+
+---
+
+# Response
+bool success
+string message

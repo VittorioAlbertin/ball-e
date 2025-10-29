@@ -95,36 +95,35 @@ class PeopleDatabaseNode(Node):
         """Service callback: Find a person by face embedding similarity."""
         try:
             embedding = np.array(request.face_embedding, dtype=np.float32)
-            threshold = request.threshold if request.threshold > 0 else 0.6
+            threshold = request.confidence_threshold if request.confidence_threshold > 0 else 0.6
 
             result = self.db.find_similar_face(embedding, threshold, logger=self.get_logger())
 
             if result:
                 match, similarity = result
-                response.found = True
+                response.match_found = True
                 response.person_id = match['id']
-                response.name = match['name']
-                response.last_seen = str(match['last_seen'])
-                response.interaction_count = match['interaction_count']
-                response.preferences_json = json.dumps(match['preferences']) if match['preferences'] else ""
-                response.notes = match['notes'] if match['notes'] else ""
-                response.similarity = float(similarity)
-                response.message = f"Recognized {match['name']}"
+                response.person_name = match['name']
+                response.similarity_score = float(similarity)
 
                 # Auto-update last seen
                 self.db.update_last_seen(match['id'])
-                self.get_logger().info(f"Recognized: {match['name']} (ID: {match['id']}, similarity: {similarity:.4f})")
+                self.get_logger().info(
+                    f"Recognized: {match['name']} (ID: {match['id']}, similarity: {similarity:.4f})"
+                )
             else:
-                response.found = False
-                response.similarity = 0.0
-                response.message = "No matching person found"
+                response.match_found = False
+                response.person_name = ''
+                response.person_id = -1
+                response.similarity_score = 0.0
                 self.get_logger().info("Face not recognized")
 
         except Exception as e:
-            response.found = False
-            response.similarity = 0.0
-            response.message = f"Error during recognition: {str(e)}"
-            self.get_logger().error(response.message)
+            response.match_found = False
+            response.person_name = ''
+            response.person_id = -1
+            response.similarity_score = 0.0
+            self.get_logger().error(f"Error during recognition: {str(e)}")
 
         return response
     
