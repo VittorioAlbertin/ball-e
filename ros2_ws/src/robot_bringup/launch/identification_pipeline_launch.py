@@ -129,8 +129,8 @@ def generate_launch_description():
         name='face_detector',
         output='screen',
         parameters=[{
-            'confidence_threshold': 0.5,
-            'nms_threshold': 0.45,
+            'confidence_threshold': 0.6,  # YuNet has well-calibrated scores
+            'nms_threshold': 0.3,  # Standard NMS threshold for YuNet
         }]
     )
 
@@ -140,13 +140,11 @@ def generate_launch_description():
         name='face_recognizer',
         output='screen',
         parameters=[{
-            'recognition_threshold': recognition_threshold,
             'use_gpu': use_gpu,
             'low_res_width': 640,
             'low_res_height': 360,
             'high_res_width': 1920,
             'high_res_height': 1080,
-            'face_crops_dir': '/ball-e/ros2_ws/robot_data/face_crops',
         }]
     )
 

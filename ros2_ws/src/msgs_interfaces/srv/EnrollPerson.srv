@@ -1,0 +1,14 @@
+# EnrollPerson.srv
+# Service to enroll a new person from current track_id
+
+# Request
+int32 track_id
+string person_name
+string notes
+
+---
+
+# Response
+bool success
+int32 person_id
+string message

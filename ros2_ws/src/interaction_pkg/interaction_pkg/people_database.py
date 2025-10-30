@@ -158,7 +158,7 @@ class PeopleDatabase:
         Find a person with similar face embedding using cosine similarity.
 
         Args:
-            query_embedding: Face embedding to search for
+            query_embedding: Face embedding to search for (should already be L2 normalized)
             threshold: Similarity threshold (0-1), higher = more strict
             logger: Optional ROS logger for debug output
 
@@ -176,15 +176,35 @@ class PeopleDatabase:
         best_match_name = None
         best_similarity = -1
 
-        # Normalize query embedding
-        query_norm = query_embedding / np.linalg.norm(query_embedding)
+        # Check if query embedding is normalized (embeddings from FaceNet should already be L2 normalized)
+        query_norm_value = np.linalg.norm(query_embedding)
+        if logger:
+            logger.info(f"Query embedding norm: {query_norm_value:.6f} (should be ~1.0 if already normalized)")
+
+        # Only normalize if not already normalized (to avoid numerical errors from double normalization)
+        if abs(query_norm_value - 1.0) > 0.01:
+            if logger:
+                logger.warning(f"Query embedding not normalized (norm={query_norm_value:.6f}), normalizing now")
+            query_norm = query_embedding / query_norm_value
+        else:
+            query_norm = query_embedding
 
         # Track all similarities for logging
         all_similarities = []
 
         for person_id, stored_embedding in embeddings:
-            # Cosine similarity
-            stored_norm = stored_embedding / np.linalg.norm(stored_embedding)
+            # Check if stored embedding is normalized
+            stored_norm_value = np.linalg.norm(stored_embedding)
+
+            # Only normalize if not already normalized
+            if abs(stored_norm_value - 1.0) > 0.01:
+                if logger:
+                    logger.warning(f"Stored embedding for person {person_id} not normalized (norm={stored_norm_value:.6f}), normalizing now")
+                stored_norm = stored_embedding / stored_norm_value
+            else:
+                stored_norm = stored_embedding
+
+            # Cosine similarity via dot product (for normalized vectors)
             similarity = np.dot(query_norm, stored_norm)
 
             # Get person name for logging
@@ -194,7 +214,8 @@ class PeopleDatabase:
 
             # DEBUG: Log embedding comparison details
             if logger:
-                logger.info(f"DEBUG {person_name}: query first 5: {query_norm[:5]}, stored first 5: {stored_norm[:5]}, dot product: {similarity:.6f}")
+                logger.info(f"[MATCH] {person_name}: query_norm={query_norm_value:.6f}, stored_norm={stored_norm_value:.6f}, similarity={similarity:.6f}")
+                logger.info(f"[MATCH] {person_name}: query first 5: {query_norm[:5]}, stored first 5: {stored_norm[:5]}")
 
             if similarity > best_similarity:
                 best_similarity = similarity

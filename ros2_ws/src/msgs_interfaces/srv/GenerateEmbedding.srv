@@ -1,0 +1,17 @@
+# GenerateEmbedding.srv
+# Service to generate face embedding from face bbox
+
+# Request
+std_msgs/Header header
+int32 track_id
+int32 face_x  # face bbox in low-res (640x360)
+int32 face_y
+int32 face_w
+int32 face_h
+
+---
+
+# Response
+bool success
+float32[] embedding  # 512-dim vector
+string message

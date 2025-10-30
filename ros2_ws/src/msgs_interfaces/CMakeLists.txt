@@ -25,15 +25,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DeletePerson.srv"
   "srv/EnrollPendingFace.srv"
   "srv/GetPersonInfo.srv"
-  "srv/RequestIdentification.srv"
-  "srv/UpdateIdentity.srv"
-  "msg/FaceRecognition.msg"
+  "srv/DetectFace.srv"
+  "srv/GenerateEmbedding.srv"
+  "srv/EnrollPerson.srv"
   "msg/PersonTrack.msg"
   "msg/PersonTrackArray.msg"
   "msg/PersonState.msg"
   "msg/PersonStateArray.msg"
-  "msg/IdentityUpdate.msg"
-  "msg/IdentificationRequest.msg"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

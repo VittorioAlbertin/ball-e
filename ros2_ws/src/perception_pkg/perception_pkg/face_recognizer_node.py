@@ -1,57 +1,47 @@
 """
-Face Recognizer Node
+Face Recognizer Node (Service-Based) - InsightFace
 
 DESCRIPTION:
     The FaceRecognizer node is responsible for generating face embeddings using the
-    FaceNet model and matching them against the people database. It receives face
-    detections with bounding boxes, extracts the face crop from the high-resolution
-    camera stream, generates a 512-dimensional embedding vector, and calls the
-    recognition service to identify the person.
+    InsightFace buffalo_l model. It operates as a service, responding to synchronous
+    embedding generation requests from the PersonStateManager. It extracts face crops
+    from the high-resolution camera stream and generates 512-dimensional embedding vectors.
 
 RESPONSIBILITIES:
-    1. Subscribe to face detections from FaceDetectorNode
-    2. Synchronize with high-res camera frames using timestamps
+    1. Cache high-res camera frames
+    2. Provide GenerateEmbedding service for on-demand embedding generation
     3. Scale face bbox from low-res (640x360) to high-res (1920x1080) coordinates
-    4. Extract and preprocess face crops from high-res images
-    5. Generate face embeddings using FaceNet (facenet.onnx)
-    6. Call recognize_face service to match against database
-    7. Publish identity results to PersonStateManager
+    4. Extract face crops from high-res images
+    5. Generate face embeddings using InsightFace buffalo_l model
+    6. Return embeddings synchronously
 
 MODEL DETAILS:
-    - Model: FaceNet (facenet.onnx)
-    - Input: 160x160x3 RGB image, normalized [-1, 1]
+    - Model: InsightFace buffalo_l (ArcFace-based recognition)
+    - Input: Face crop (any size, handled internally by InsightFace)
     - Output: 512-dimensional embedding vector (L2 normalized)
-    - Recognition: Cosine similarity matching with threshold
+    - Much more reliable than raw FaceNet ONNX models
 
 SUBSCRIPTIONS:
     - /camera/image_raw (sensor_msgs/Image): High-res camera stream (1920x1080)
-    - /face_detector/detections (FaceRecognition): Face bounding boxes with track IDs
 
-PUBLICATIONS:
-    - /face_recognizer/results (IdentityUpdate): Identity results with confidence
-
-SERVICE CLIENTS:
-    - people_db/recognize_face: Face recognition matching service
+SERVICES:
+    - /face_recognition/generate_embedding (GenerateEmbedding): Generate face embedding
 
 PARAMETERS:
-    - model_path (str): Path to facenet.onnx model [default: models/facenet.onnx]
-    - recognition_threshold (float): Minimum cosine similarity for match [default: 0.6]
     - use_gpu (bool): Use GPU acceleration if available [default: true]
     - low_res_width (int): Low-res image width for bbox scaling [default: 640]
     - low_res_height (int): Low-res image height for bbox scaling [default: 360]
     - high_res_width (int): High-res image width for bbox scaling [default: 1920]
     - high_res_height (int): High-res image height for bbox scaling [default: 1080]
+    - model_dir (str): Directory for InsightFace models [default: ~/.insightface/models]
 
 DATA FLOW:
-    1. Cache high-res frames continuously
-    2. Receive face detection (track_id, bbox in low-res, timestamp)
-    3. Find high-res frame with matching timestamp
-    4. Scale bbox from low-res (640x360) to high-res (1920x1080)
-    5. Crop face from high-res image
-    6. Preprocess: Resize to 160x160, normalize [-1, 1]
-    7. Generate 512-dim embedding with FaceNet
-    8. Call recognize_face service
-    9. Publish identity result
+    1. Receive service request (track_id, face bbox in low-res, timestamp)
+    2. Lookup high-res frame in cache by timestamp
+    3. Scale bbox from low-res to high-res
+    4. Crop face from high-res image
+    5. Use InsightFace to detect and extract embedding
+    6. Return embedding synchronously
 
 COORDINATE SCALING:
     Input bbox is in low-res coordinates (640x360), must be scaled to high-res (1920x1080):
@@ -63,29 +53,25 @@ COORDINATE SCALING:
 GPU ACCELERATION:
     - Attempts to use CUDAExecutionProvider if available
     - Falls back to CPUExecutionProvider if GPU not available
-    - Check available providers: onnxruntime.get_available_providers()
 
 AUTHOR: Vittorio Albertin
-DATE: 2025-10-29
+DATE: 2025-10-30
 """
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from msgs_interfaces.msg import FaceRecognition, IdentityUpdate
-from msgs_interfaces.srv import RecognizeFace
+from msgs_interfaces.srv import GenerateEmbedding
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-import onnxruntime as ort
 import os
-import warnings
 
-# Suppress ONNX Runtime warnings
-warnings.filterwarnings('ignore', category=UserWarning, module='onnxruntime')
-ort.set_default_logger_severity(3)  # 3 = ERROR level (suppress warnings)
+# Import InsightFace
+from insightface.app import FaceAnalysis
 
-FACENET_MODEL_PATH = "/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models/facenet.onnx"
+# Model directory in perception_pkg
+MODELS_DIR = "/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models"
 
 
 class FaceRecognizerNode(Node):
@@ -93,84 +79,72 @@ class FaceRecognizerNode(Node):
         super().__init__('face_recognizer_node')
 
         # Declare parameters
-        self.declare_parameter('recognition_threshold', 0.6)
         self.declare_parameter('use_gpu', True)
         self.declare_parameter('low_res_width', 640)
         self.declare_parameter('low_res_height', 360)
         self.declare_parameter('high_res_width', 1920)
         self.declare_parameter('high_res_height', 1080)
-        self.declare_parameter('face_crops_dir', '/ball-e/ros2_ws/robot_data/face_crops')
+        self.declare_parameter('model_dir', os.path.expanduser('~/.insightface/models'))
 
         # Get parameters
-        self.recognition_threshold = self.get_parameter('recognition_threshold').value
         use_gpu = self.get_parameter('use_gpu').value
         self.low_res_width = self.get_parameter('low_res_width').value
         self.low_res_height = self.get_parameter('low_res_height').value
         self.high_res_width = self.get_parameter('high_res_width').value
         self.high_res_height = self.get_parameter('high_res_height').value
-        self.face_crops_dir = self.get_parameter('face_crops_dir').value
+        model_dir = self.get_parameter('model_dir').value
 
         # Compute scaling factors
         self.scale_x = self.high_res_width / self.low_res_width
         self.scale_y = self.high_res_height / self.low_res_height
 
-        # Create face crops directory if it doesn't exist
-        os.makedirs(self.face_crops_dir, exist_ok=True)
-        self.get_logger().info(f"Face crops will be saved to: {self.face_crops_dir}")
-
-        # Check if model exists
-        if not os.path.exists(FACENET_MODEL_PATH):
-            self.get_logger().error(f"Model file not found: {FACENET_MODEL_PATH}")
-            raise FileNotFoundError(f"Model file not found: {FACENET_MODEL_PATH}")
-
         # Setup execution providers (GPU/CPU)
         providers = ['CPUExecutionProvider']  # Default to CPU
 
         if use_gpu:
-            available_providers = ort.get_available_providers()
-            if 'CUDAExecutionProvider' in available_providers:
-                try:
-                    # Try to create session with CUDA first
-                    test_session = ort.InferenceSession(
-                        FACENET_MODEL_PATH,
-                        providers=['CUDAExecutionProvider']
-                    )
+            try:
+                import onnxruntime as ort
+                available_providers = ort.get_available_providers()
+                if 'CUDAExecutionProvider' in available_providers:
                     providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
                     self.get_logger().info("GPU acceleration enabled (CUDA)")
-                except Exception:
-                    # CUDA libraries not available, fall back to CPU
-                    self.get_logger().info("CUDA not available, using CPU")
-            elif 'TensorrtExecutionProvider' in available_providers:
-                providers = ['TensorrtExecutionProvider', 'CPUExecutionProvider']
-                self.get_logger().info("GPU acceleration enabled (TensorRT)")
-            else:
-                self.get_logger().info("GPU not available, using CPU")
+                elif 'TensorrtExecutionProvider' in available_providers:
+                    providers = ['TensorrtExecutionProvider', 'CPUExecutionProvider']
+                    self.get_logger().info("GPU acceleration enabled (TensorRT)")
+                else:
+                    self.get_logger().info("GPU not available, using CPU")
+            except Exception:
+                self.get_logger().info("CUDA not available, using CPU")
         else:
             self.get_logger().info("GPU disabled, using CPU")
 
-        # Initialize ONNX Runtime session
-        self.session = ort.InferenceSession(
-            FACENET_MODEL_PATH,
-            providers=providers
-        )
-        self.input_name = self.session.get_inputs()[0].name
-        self.output_name = self.session.get_outputs()[0].name
+        # Initialize InsightFace FaceAnalysis
+        # This will download buffalo_l model if not present
+        self.get_logger().info("Loading InsightFace buffalo_l model...")
 
-        # Get model input shape
-        input_shape = self.session.get_inputs()[0].shape
-        self.model_input_size = input_shape[2]  # Assuming square input [batch, channels, height, width]
+        # Set model directory to use downloaded model if present
+        os.environ['INSIGHTFACE_HOME'] = model_dir
 
-        # Log active provider
-        active_provider = self.session.get_providers()[0]
-        self.get_logger().info(f"Using execution provider: {active_provider}")
-        self.get_logger().info(f"Model input size: {self.model_input_size}x{self.model_input_size}")
+        try:
+            self.face_analyzer = FaceAnalysis(
+                name='buffalo_l',
+                root=model_dir,
+                providers=providers
+            )
+            self.face_analyzer.prepare(ctx_id=0 if use_gpu else -1, det_size=(640, 640))
+            self.get_logger().info(f"✓ InsightFace buffalo_l model loaded successfully")
+            self.get_logger().info(f"  Model directory: {model_dir}")
+            self.get_logger().info(f"  Providers: {providers}")
+        except Exception as e:
+            self.get_logger().error(f"Failed to load InsightFace model: {e}")
+            raise RuntimeError(f"Failed to load InsightFace model: {e}")
 
         # Bridge for ROS-CV conversion
         self.bridge = CvBridge()
 
         # Cache for high-res frames
         self.frame_cache = {}  # {timestamp_ns: Image}
-        self.cache_duration_sec = 1.0  # Keep frames for 1 second
+        self.cache_duration_sec = 3.0  # Keep frames for 3 seconds (for enrollment)
 
         # Subscriptions
         self.image_sub = self.create_subscription(
@@ -180,25 +154,17 @@ class FaceRecognizerNode(Node):
             10
         )
 
-        self.detection_sub = self.create_subscription(
-            FaceRecognition,
-            '/face_detector/detections',
-            self.detection_callback,
-            10
+        # Service server
+        self.generate_embedding_service = self.create_service(
+            GenerateEmbedding,
+            '/face_recognition/generate_embedding',
+            self.generate_embedding_callback
         )
 
-        # Publications
-        self.result_pub = self.create_publisher(IdentityUpdate, '/face_recognizer/results', 10)
-
-        # Service client
-        self.recognize_client = self.create_client(RecognizeFace, 'people_db/recognize_face')
-
         # Cleanup timer
-        self.create_timer(0.5, self.cleanup_cache)
+        self.create_timer(2, self.cleanup_cache)
 
-        self.get_logger().info("FaceRecognizerNode initialized")
-        self.get_logger().info(f"  Model: {FACENET_MODEL_PATH}")
-        self.get_logger().info(f"  Recognition threshold: {self.recognition_threshold}")
+        self.get_logger().info("FaceRecognizerNode initialized (InsightFace buffalo_l)")
         self.get_logger().info(f"  Resolution scaling: {self.low_res_width}x{self.low_res_height} → {self.high_res_width}x{self.high_res_height}")
         self.get_logger().info(f"  Scale factors: x={self.scale_x:.2f}, y={self.scale_y:.2f}")
 
@@ -212,84 +178,74 @@ class FaceRecognizerNode(Node):
         timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
         self.frame_cache[timestamp_ns] = msg
 
-    def detection_callback(self, msg: FaceRecognition):
+    def generate_embedding_callback(self, request, response):
         """
-        Process face detection and perform recognition.
+        Service callback for embedding generation.
 
         Args:
-            msg: FaceRecognition message containing face bbox and track ID
-        """
-        timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+            request: GenerateEmbedding.Request containing face bbox in low-res
+            response: GenerateEmbedding.Response to populate
 
-        # Check if high-res frame is available
+        Returns:
+            GenerateEmbedding.Response with embedding or failure
+        """
+        # Convert timestamp to nanoseconds for cache key
+        timestamp_ns = request.header.stamp.sec * 1_000_000_000 + request.header.stamp.nanosec
+
+        # Check if frame is available in cache
         if timestamp_ns not in self.frame_cache:
-            self.get_logger().warning(
-                f"High-res frame not found for timestamp {timestamp_ns} " +
-                f"(track {msg.track_id}). Skipping recognition."
-            )
-            return
+            response.success = False
+            response.message = f"Frame not found in cache for timestamp {timestamp_ns}"
+            self.get_logger().warning(response.message)
+            return response
+
+        frame_msg = self.frame_cache[timestamp_ns]
 
         try:
             # Get high-res frame
-            frame_msg = self.frame_cache[timestamp_ns]
             frame = self.bridge.imgmsg_to_cv2(frame_msg, desired_encoding='bgr8')
 
             # Scale bbox from low-res to high-res
             high_res_bbox = self.scale_bbox(
-                msg.face_x, msg.face_y, msg.face_w, msg.face_h
+                request.face_x, request.face_y, request.face_w, request.face_h
             )
 
-            self.get_logger().info(
-                f"Track {msg.track_id} - Low-res bbox: ({msg.face_x}, {msg.face_y}, {msg.face_w}, {msg.face_h})"
+            self.get_logger().debug(
+                f"Track {request.track_id} - Low-res bbox: ({request.face_x}, {request.face_y}, {request.face_w}, {request.face_h})"
             )
-            self.get_logger().info(
-                f"Track {msg.track_id} - High-res bbox: {high_res_bbox}, Frame shape: {frame.shape}"
+            self.get_logger().debug(
+                f"Track {request.track_id} - High-res bbox: {high_res_bbox}, Frame shape: {frame.shape}"
             )
 
             # Extract face crop
             face_crop = self.extract_face(frame, high_res_bbox)
 
             if face_crop is None:
-                self.get_logger().warning(
-                    f"Failed to extract face for track {msg.track_id}. " +
-                    f"Bbox: {high_res_bbox}, Frame: {frame.shape}"
-                )
-                # Publish unknown result
-                result = IdentityUpdate()
-                result.header = msg.header
-                result.track_id = msg.track_id
-                result.identity = 'unknown'
-                result.confidence = 0.0
-                result.person_id = -1
-                self.result_pub.publish(result)
-                return
-
-            # Save high-res face crop to disk
-            self.save_face_crop(face_crop, msg.track_id, timestamp_ns)
+                response.success = False
+                response.message = f"Failed to extract face for track {request.track_id}"
+                self.get_logger().warning(response.message)
+                return response
 
             # Generate embedding
             embedding = self.generate_embedding(face_crop)
 
-            # Recognize face
-            identity, confidence, person_id = self.recognize_face(embedding)
-
-            # Publish result
-            result = IdentityUpdate()
-            result.header = msg.header
-            result.track_id = msg.track_id
-            result.identity = identity
-            result.confidence = confidence
-            result.person_id = person_id
-
-            self.result_pub.publish(result)
+            # Populate response
+            response.success = True
+            response.embedding = embedding.tolist()
+            response.message = "Embedding generated successfully"
 
             self.get_logger().info(
-                f"Recognition result for track {msg.track_id}: " +
-                f"'{identity}' (confidence: {confidence:.3f}, person_id: {person_id})"
+                f"Embedding generated for track {request.track_id} " +
+                f"(embedding dim: {len(embedding)})"
             )
 
+            return response
+
         except Exception as e:
-            self.get_logger().error(f"Face recognition failed for track {msg.track_id}: {e}")
+            response.success = False
+            response.message = f"Embedding generation failed: {str(e)}"
+            self.get_logger().error(response.message)
+            return response
 
     def scale_bbox(self, x: int, y: int, w: int, h: int) -> tuple:
         """
@@ -352,7 +308,7 @@ class FaceRecognizerNode(Node):
 
     def generate_embedding(self, face: np.ndarray) -> np.ndarray:
         """
-        Generate 512-dim face embedding using FaceNet.
+        Generate 512-dim face embedding using InsightFace.
 
         Args:
             face: Face crop (BGR)
@@ -360,104 +316,30 @@ class FaceRecognizerNode(Node):
         Returns:
             np.ndarray: 512-dim embedding vector (L2 normalized)
         """
-        # Preprocess
-        preprocessed = self.preprocess_face(face)
+        # Use InsightFace to detect face and extract embedding
+        # InsightFace handles all preprocessing internally
+        faces = self.face_analyzer.get(face)
 
-        # Inference
-        embedding = self.session.run([self.output_name], {self.input_name: preprocessed})[0]
+        if len(faces) == 0:
+            self.get_logger().warning(f"[EMBEDDING] No face detected in crop")
+            # Return zero embedding as fallback
+            return np.zeros(512, dtype=np.float32)
 
-        # L2 normalize
-        embedding = embedding / np.linalg.norm(embedding)
+        # Use the first detected face
+        if len(faces) > 1:
+            self.get_logger().debug(f"[EMBEDDING] Multiple faces detected ({len(faces)}), using first one")
 
-        return embedding.flatten()
+        embedding = faces[0].embedding
 
-    def preprocess_face(self, face: np.ndarray) -> np.ndarray:
-        """
-        Preprocess face for FaceNet model.
+        # Normalize embedding (InsightFace embeddings are already normalized, but do it anyway for consistency)
+        norm = np.linalg.norm(embedding)
+        embedding_normalized = embedding / norm if norm > 0 else embedding
 
-        Args:
-            face: Face crop (BGR, HxWx3)
+        # Log embedding stats
+        self.get_logger().info(f"[EMBEDDING] Generated embedding: dim={len(embedding_normalized)}, norm={np.linalg.norm(embedding_normalized):.6f}")
+        self.get_logger().info(f"[EMBEDDING] Stats: min={embedding_normalized.min():.6f}, max={embedding_normalized.max():.6f}, mean={embedding_normalized.mean():.6f}, std={embedding_normalized.std():.6f}")
 
-        Returns:
-            np.ndarray: Preprocessed tensor (1x3xHxW) where H,W = model_input_size
-        """
-        # Resize to model input size (112x112 or 160x160 depending on model)
-        resized = cv2.resize(face, (self.model_input_size, self.model_input_size))
-
-        # Convert BGR to RGB
-        rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-
-        # Normalize to [-1, 1]
-        normalized = (rgb.astype(np.float32) - 127.5) / 128.0
-
-        # Transpose to CHW format
-        chw = np.transpose(normalized, (2, 0, 1))
-
-        # Add batch dimension
-        batch = np.expand_dims(chw, axis=0)
-
-        return batch
-
-    def recognize_face(self, embedding: np.ndarray) -> tuple:
-        """
-        Call recognition service to match embedding against database.
-
-        Args:
-            embedding: 512-dim face embedding
-
-        Returns:
-            tuple: (identity, confidence, person_id)
-        """
-        # Wait for service
-        if not self.recognize_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().error("recognize_face service not available")
-            return ('unknown', 0.0, -1)
-
-        # Create request
-        request = RecognizeFace.Request()
-        request.face_embedding = embedding.tolist()
-        request.confidence_threshold = self.recognition_threshold
-
-        try:
-            # Call service synchronously
-            future = self.recognize_client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-
-            if future.done():
-                response = future.result()
-                if response.match_found:
-                    return (response.person_name, response.similarity_score, response.person_id)
-                else:
-                    return ('unknown', 0.0, -1)
-            else:
-                self.get_logger().error("recognize_face service call timeout")
-                return ('unknown', 0.0, -1)
-
-        except Exception as e:
-            self.get_logger().error(f"recognize_face service call failed: {e}")
-            return ('unknown', 0.0, -1)
-
-    def save_face_crop(self, face_crop: np.ndarray, track_id: int, timestamp_ns: int):
-        """
-        Save high-res face crop to disk.
-
-        Args:
-            face_crop: Face crop image (BGR)
-            track_id: Track ID of the person
-            timestamp_ns: Timestamp in nanoseconds
-        """
-        try:
-            # Create filename with track ID and timestamp
-            filename = f"track_{track_id}_{timestamp_ns}.jpg"
-            filepath = os.path.join(self.face_crops_dir, filename)
-
-            # Save image
-            cv2.imwrite(filepath, face_crop)
-
-            self.get_logger().debug(f"Saved face crop: {filename}")
-
-        except Exception as e:
-            self.get_logger().error(f"Failed to save face crop: {e}")
+        return embedding_normalized.astype(np.float32)
 
     def cleanup_cache(self):
         """Remove old frames from cache."""
