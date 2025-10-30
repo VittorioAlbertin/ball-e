@@ -84,7 +84,7 @@ class FaceRecognizerNode(Node):
         self.declare_parameter('low_res_height', 360)
         self.declare_parameter('high_res_width', 1920)
         self.declare_parameter('high_res_height', 1080)
-        self.declare_parameter('model_dir', os.path.expanduser('~/.insightface/models'))
+        self.declare_parameter('model_dir', MODELS_DIR)
 
         # Get parameters
         use_gpu = self.get_parameter('use_gpu').value
