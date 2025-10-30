@@ -80,8 +80,8 @@ class PersonStateManager(Node):
 
         # Declare parameters
         self.declare_parameter('reidentification_confidence_threshold', 0.4)
-        self.declare_parameter('known_person_reidentify_interval', 60.0)
-        self.declare_parameter('unknown_person_reidentify_interval', 15.0)
+        self.declare_parameter('known_person_reidentify_interval', 15.0)
+        self.declare_parameter('unknown_person_reidentify_interval', 5.0)
         self.declare_parameter('max_identification_attempts', 5)
 
         # Get parameters

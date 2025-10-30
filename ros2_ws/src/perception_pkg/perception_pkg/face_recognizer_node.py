@@ -70,8 +70,8 @@ import os
 # Import InsightFace
 from insightface.app import FaceAnalysis
 
-# Model directory in perception_pkg
-MODELS_DIR = "/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models"
+# Model directory outside of package (to avoid colcon build issues)
+MODELS_DIR = "/ball-e/ros2_ws/models"
 
 
 class FaceRecognizerNode(Node):
@@ -122,18 +122,25 @@ class FaceRecognizerNode(Node):
         # This will download buffalo_l model if not present
         self.get_logger().info("Loading InsightFace buffalo_l model...")
 
-        # Set model directory to use downloaded model if present
-        os.environ['INSIGHTFACE_HOME'] = model_dir
+        # Create models directory if it doesn't exist
+        os.makedirs(model_dir, exist_ok=True)
+
+        # InsightFace expects: root/models/buffalo_l/
+        # So if model_dir = "/ball-e/ros2_ws/models", root should be "/ball-e/ros2_ws"
+        insightface_root = os.path.dirname(model_dir)
 
         try:
+            # Use root parameter to specify where models are stored
+            # InsightFace will look for models in root/models/buffalo_l/
             self.face_analyzer = FaceAnalysis(
                 name='buffalo_l',
-                root=model_dir,
+                root=insightface_root,
                 providers=providers
             )
             self.face_analyzer.prepare(ctx_id=0 if use_gpu else -1, det_size=(640, 640))
             self.get_logger().info(f"✓ InsightFace buffalo_l model loaded successfully")
-            self.get_logger().info(f"  Model directory: {model_dir}")
+            self.get_logger().info(f"  Root directory: {insightface_root}")
+            self.get_logger().info(f"  Model path: {model_dir}/buffalo_l/")
             self.get_logger().info(f"  Providers: {providers}")
         except Exception as e:
             self.get_logger().error(f"Failed to load InsightFace model: {e}")
