@@ -107,7 +107,7 @@ class PersonTrackerNode(Node):
 
         # Declare and get parameters
         self.declare_parameter('max_age', 30)
-        self.declare_parameter('min_hits', 3)
+        self.declare_parameter('min_hits', 10)
         self.declare_parameter('iou_threshold', 0.3)
         self.declare_parameter('high_conf_threshold', 0.6)
         self.declare_parameter('low_conf_threshold', 0.1)
