@@ -1,4 +1,12 @@
+# UpdateLastSeen.srv
+# Service to update the last seen timestamp of a person
+
+# Request
 int32 person_id
+builtin_interfaces/Time last_seen
+
 ---
+
+# Response
 bool success
 string message

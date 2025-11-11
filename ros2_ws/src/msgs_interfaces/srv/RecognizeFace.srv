@@ -1,12 +1,14 @@
-float32[] face_embedding
-float32 threshold
+# RecognizeFace.srv
+# Service to recognize a person by face embedding
+
+# Request
+float32[] face_embedding  # Face embedding vector (512-dim for FaceNet)
+float32 confidence_threshold  # Minimum cosine similarity (default: 0.6)
+
 ---
-bool found
-int32 person_id
-string name
-string last_seen
-int32 interaction_count
-string preferences_json
-string notes
-string message
-float32 similarity
+
+# Response
+bool match_found
+string person_name  # Empty if no match
+int32 person_id  # Database ID, -1 if no match
+float32 similarity_score  # Cosine similarity [0, 1]

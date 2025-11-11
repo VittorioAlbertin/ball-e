@@ -6,4 +6,6 @@ env/
 install/
 log/
 .venv
-ros2_ws/src/perception_pkg/perception_pkg/models/
+ros2_ws/models/
+.claude
+ros2_ws/robot_data/people.db

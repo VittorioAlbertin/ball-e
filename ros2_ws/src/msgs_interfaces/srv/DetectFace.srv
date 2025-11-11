@@ -1,0 +1,20 @@
+# DetectFace.srv
+# Service to detect face in person ROI
+
+# Request
+std_msgs/Header header
+int32 track_id
+int32 bbox_x  # person bbox in low-res (640x360)
+int32 bbox_y
+int32 bbox_w
+int32 bbox_h
+
+---
+
+# Response
+bool success
+int32 face_x  # face bbox in low-res (absolute coords)
+int32 face_y
+int32 face_w
+int32 face_h
+string message

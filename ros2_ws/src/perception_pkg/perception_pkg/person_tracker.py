@@ -107,7 +107,7 @@ class PersonTrackerNode(Node):
 
         # Declare and get parameters
         self.declare_parameter('max_age', 30)
-        self.declare_parameter('min_hits', 3)
+        self.declare_parameter('min_hits', 10)
         self.declare_parameter('iou_threshold', 0.3)
         self.declare_parameter('high_conf_threshold', 0.6)
         self.declare_parameter('low_conf_threshold', 0.1)
@@ -125,6 +125,7 @@ class PersonTrackerNode(Node):
         self.get_logger().info(f'  iou_threshold: {self.iou_threshold}')
         self.get_logger().info(f'  high_conf_threshold: {self.high_conf_thresh}')
         self.get_logger().info(f'  low_conf_threshold: {self.low_conf_thresh}')
+        self.get_logger().info('Outputting tracks in low-res coordinates (640x360)')
 
         # Track management
         self.tracks = []
@@ -298,6 +299,7 @@ class PersonTrackerNode(Node):
             track_msg.header = header
 
             track_msg.track_id = track.track_id
+            # Output bbox in low-res coordinates (640x360)
             track_msg.bbox_x = float(track.bbox[0])
             track_msg.bbox_y = float(track.bbox[1])
             track_msg.bbox_w = float(track.bbox[2])

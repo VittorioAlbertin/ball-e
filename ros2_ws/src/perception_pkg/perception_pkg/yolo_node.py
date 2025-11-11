@@ -9,23 +9,33 @@ import time
 import ros2_numpy as rnp
 import numpy as np
 import os
+import shutil
 import warnings
 
 # Suppress torch autocast deprecation warning from YOLOv5
 warnings.filterwarnings('ignore', category=FutureWarning, message='.*torch.cuda.amp.autocast.*')
 
-MODEL_PATH = "/ball-e/ros2_ws/src/perception_pkg/perception_pkg/models/yolov5n.pt"
+MODEL_PATH = "/ball-e/ros2_ws/models/yolov5n.pt"
 
 class YoloNode(Node):
     def __init__(self):
         super().__init__('yolo_node')
+
+        # Set torch hub cache directory to persist across container rebuilds
+        torch_hub_dir = os.path.join(os.path.dirname(MODEL_PATH), 'torch_hub')
+        os.environ['TORCH_HOME'] = torch_hub_dir
+        os.makedirs(torch_hub_dir, exist_ok=True)
+        self.get_logger().info(f"Torch hub cache: {torch_hub_dir}")
+
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.get_logger().info(f"Using device: {self.device}")
         self.latest_msg = None
         # Subscribers and Publishers
+        # Subscribe to low-res stream for faster processing (640x360)
         self.subscription = self.create_subscription(
-            Image, '/camera/image_raw', self.image_callback, 1
+            Image, '/camera/image_low_res', self.image_callback, 1
         )
+        self.get_logger().info("Subscribed to /camera/image_low_res (low-resolution stream for YOLO)")
         self.detection_pub = self.create_publisher(
             Detection2DArray, '/yolo/detections', 1
         )
@@ -35,13 +45,31 @@ class YoloNode(Node):
 
         # Load YOLO model (offline if available)
         if os.path.exists(MODEL_PATH):
-            self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_PATH, _verbose=False)
+            # trust_repo=True suppresses warning, force_reload=False uses cached repo code
+            self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_PATH,
+                                       _verbose=False, trust_repo=True, force_reload=False)
             self.get_logger().info(f"Loaded YOLO model from {MODEL_PATH}")
         else:
             self.get_logger().info("Downloading YOLOv5n pretrained model...")
-            self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True, _verbose=False)
+            self.model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True,
+                                       _verbose=False, trust_repo=True)
+
+            # Save the model checkpoint to disk for future use
+            # YOLOv5 models have a .ckpt attribute with the full checkpoint
             os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-            self.get_logger().info(f"Downloaded and saved YOLO model to {MODEL_PATH}")
+            # The model is downloaded to torch hub cache, copy it to our location
+            hub_model_path = self.model.pt_path if hasattr(self.model, 'pt_path') else None
+            if hub_model_path and os.path.exists(hub_model_path):
+                shutil.copy(hub_model_path, MODEL_PATH)
+                self.get_logger().info(f"Downloaded and saved YOLO model to {MODEL_PATH}")
+            else:
+                # Fallback: save using torch.save
+                checkpoint = {
+                    'model': self.model.state_dict(),
+                    'names': self.model.names if hasattr(self.model, 'names') else None
+                }
+                torch.save(checkpoint, MODEL_PATH)
+                self.get_logger().info(f"Saved YOLO model checkpoint to {MODEL_PATH}")
         self.model.to(self.device)
         self.model.eval()
 
@@ -73,7 +101,7 @@ class YoloNode(Node):
                     img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_GRAY2RGB)
                 else:
                     img_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                results = self.model(img_rgb, size=640)#.to(self.device)  # you can adjust size
+                results = self.model(img_rgb, size=640)  # you can adjust size
                 self.publish_results(results, msg.header, cv_image)
             except Exception as e:
                 self.get_logger().error(f"YOLO processing error: {e}")
