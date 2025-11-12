@@ -15,6 +15,13 @@ RUN apt-get update && apt-get install -y \
     chmod 0440 /etc/sudoers.d/$USERNAME &&\
     rm -rf /var/lib/apt/lists/*
 
+# Install Gazebo Classic and ROS2 integration packages
+RUN apt-get update && apt-get install -y \
+    gazebo \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-gazebo-plugins && \
+    rm -rf /var/lib/apt/lists/*
+
 # Rosdep update
 RUN rosdep update
 

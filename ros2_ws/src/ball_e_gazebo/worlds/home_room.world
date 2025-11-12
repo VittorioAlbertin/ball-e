@@ -1,0 +1,535 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="home_room">
+
+    <!-- Physics settings -->
+    <physics type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <!-- Lighting -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>1.0 1.0 0.95 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <direction>-0.3 0.2 -0.9</direction>
+    </light>
+
+    <!-- Ambient lighting -->
+    <light type="point" name="ceiling_light_1">
+      <pose>2 2 2.8 0 0 0</pose>
+      <diffuse>0.8 0.8 0.7 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>10</range>
+        <constant>0.5</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <cast_shadows>false</cast_shadows>
+    </light>
+
+    <light type="point" name="ceiling_light_2">
+      <pose>-2 -2 2.8 0 0 0</pose>
+      <diffuse>0.8 0.8 0.7 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>10</range>
+        <constant>0.5</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <cast_shadows>false</cast_shadows>
+    </light>
+
+    <!-- Floor -->
+    <model name="floor">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>8 6 0.1</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>8 6 0.1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.8 0.7 0.6 1</ambient>
+            <diffuse>0.8 0.7 0.6 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>0 0 -0.05 0 0 0</pose>
+    </model>
+
+    <!-- Ceiling -->
+    <model name="ceiling">
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>8 6 0.1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.95 0.95 1</ambient>
+            <diffuse>0.95 0.95 0.95 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>0 0 3.05 0 0 0</pose>
+    </model>
+
+    <!-- Walls -->
+    <!-- North wall -->
+    <model name="wall_north">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>8 0.2 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>8 0.2 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.9 0.9 0.85 1</ambient>
+            <diffuse>0.9 0.9 0.85 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>0 3 1.5 0 0 0</pose>
+    </model>
+
+    <!-- South wall -->
+    <model name="wall_south">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>8 0.2 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>8 0.2 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.9 0.9 0.85 1</ambient>
+            <diffuse>0.9 0.9 0.85 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>0 -3 1.5 0 0 0</pose>
+    </model>
+
+    <!-- East wall -->
+    <model name="wall_east">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.2 6 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.2 6 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.9 0.9 0.85 1</ambient>
+            <diffuse>0.9 0.9 0.85 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>4 0 1.5 0 0 0</pose>
+    </model>
+
+    <!-- West wall -->
+    <model name="wall_west">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.2 6 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.2 6 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.9 0.9 0.85 1</ambient>
+            <diffuse>0.9 0.9 0.85 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>-4 0 1.5 0 0 0</pose>
+    </model>
+
+    <!-- Furniture -->
+    <!-- Coffee table in center -->
+    <model name="coffee_table">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1.2 0.6 0.4</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1.2 0.6 0.4</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.3 0.2 1</ambient>
+            <diffuse>0.5 0.4 0.3 1</diffuse>
+            <specular>0.3 0.3 0.3 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>0 0 0.2 0 0 0</pose>
+    </model>
+
+    <!-- Couch against south wall -->
+    <model name="couch">
+      <static>true</static>
+      <link name="seat">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>2.0 0.8 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>2.0 0.8 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.35 0.5 1</ambient>
+            <diffuse>0.4 0.45 0.6 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <pose>0 0 0.25 0 0 0</pose>
+      </link>
+      <link name="backrest">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>2.0 0.2 0.6</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.35 0.5 1</ambient>
+            <diffuse>0.4 0.45 0.6 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <pose>0 -0.3 0.55 0 0 0</pose>
+      </link>
+      <pose>0 -2.3 0 0 0 0</pose>
+    </model>
+
+    <!-- Chair 1 (near table) -->
+    <model name="chair_1">
+      <static>true</static>
+      <link name="seat">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 0.5 0.05</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.5 0.5 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.3 1</ambient>
+            <diffuse>0.7 0.5 0.4 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+        <pose>0 0 0.45 0 0 0</pose>
+      </link>
+      <link name="backrest">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.5 0.1 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.3 1</ambient>
+            <diffuse>0.7 0.5 0.4 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+        <pose>0 -0.2 0.7 0 0 0</pose>
+      </link>
+      <pose>1.2 0.8 0 0 0 0</pose>
+    </model>
+
+    <!-- Chair 2 (near table, opposite side) -->
+    <model name="chair_2">
+      <static>true</static>
+      <link name="seat">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 0.5 0.05</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.5 0.5 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.3 1</ambient>
+            <diffuse>0.7 0.5 0.4 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+        <pose>0 0 0.45 0 0 0</pose>
+      </link>
+      <link name="backrest">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.5 0.1 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.3 1</ambient>
+            <diffuse>0.7 0.5 0.4 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+        <pose>0 0.2 0.7 0 0 0</pose>
+      </link>
+      <pose>-1.2 -0.8 0 0 0 3.14159</pose>
+    </model>
+
+    <!-- Bookshelf against east wall -->
+    <model name="bookshelf">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 1.5 2.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 1.5 2.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.35 0.25 0.15 1</ambient>
+            <diffuse>0.45 0.35 0.25 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>3.5 1.5 1.0 0 0 0</pose>
+    </model>
+
+    <!-- Small side table -->
+    <model name="side_table">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.25</radius>
+              <length>0.6</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.25</radius>
+              <length>0.6</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.4 0.3 0.2 1</ambient>
+            <diffuse>0.5 0.4 0.3 1</diffuse>
+            <specular>0.3 0.3 0.3 1</specular>
+          </material>
+        </visual>
+      </link>
+      <pose>2.5 -2.0 0.3 0 0 0</pose>
+    </model>
+
+    <!-- Animated People Actors -->
+
+    <!-- Person 1: Walking along the east side -->
+    <actor name="person_1">
+      <pose>3 -2 0 0 0 0</pose>
+      <skin>
+        <filename>https://fuel.ignitionrobotics.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walking">
+        <filename>https://fuel.ignitionrobotics.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint>
+            <time>0.0</time>
+            <pose>3 -2 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>4.0</time>
+            <pose>3 2 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>8.0</time>
+            <pose>3 2 0 0 0 -1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>12.0</time>
+            <pose>3 -2 0 0 0 -1.57</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <!-- Person 2: Walking diagonally across the room -->
+    <actor name="person_2">
+      <pose>-3 -2 0 0 0 0</pose>
+      <skin>
+        <filename>https://fuel.ignitionrobotics.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walking">
+        <filename>https://fuel.ignitionrobotics.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>2.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint>
+            <time>0.0</time>
+            <pose>-3 -2 0 0 0 0.785</pose>
+          </waypoint>
+          <waypoint>
+            <time>5.0</time>
+            <pose>2 1.5 0 0 0 0.785</pose>
+          </waypoint>
+          <waypoint>
+            <time>10.0</time>
+            <pose>2 1.5 0 0 0 -2.356</pose>
+          </waypoint>
+          <waypoint>
+            <time>15.0</time>
+            <pose>-3 -2 0 0 0 -2.356</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <!-- Person 3: Walking near the couch -->
+    <actor name="person_3">
+      <pose>-2 -1 0 0 0 0</pose>
+      <skin>
+        <filename>https://fuel.ignitionrobotics.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walking">
+        <filename>https://fuel.ignitionrobotics.org/1.0/Mingfei/models/actor/tip/files/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>4.0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint>
+            <time>0.0</time>
+            <pose>-2 -1 0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>3.0</time>
+            <pose>1 -1 0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>6.0</time>
+            <pose>1 1 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>9.0</time>
+            <pose>-1 1 0 0 0 3.14</pose>
+          </waypoint>
+          <waypoint>
+            <time>12.0</time>
+            <pose>-2 -1 0 0 0 -1.57</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+  </world>
+</sdf>

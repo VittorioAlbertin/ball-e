@@ -27,12 +27,17 @@ for group, packages in packages_by_group.items():
     interpreter = GROUP_INTERPRETER.get(group, "/usr/bin/python3")
     print(f"Building group '{group}' with interpreter {interpreter}: {packages}")
 
+    # Only pass PYTHON_EXECUTABLE for ML packages that need custom Python
+    cmake_args = ""
+    if group == "ml":
+        cmake_args = f"--cmake-args -DPYTHON_EXECUTABLE={interpreter}"
+
     # Run colcon build
     subprocess.run(
         f"{interpreter} -m colcon build "
         f"--merge-install "
         f"--packages-select {' '.join(packages)} "
-        f"--cmake-args -DPYTHON_EXECUTABLE={interpreter}",
+        f"{cmake_args}",
         cwd=WS_PATH,
         shell=True,
         check=True,
