@@ -33,6 +33,8 @@ setup(
             'person_state_manager_node = perception_pkg.person_state_manager_node:main',
             'face_detector_node = perception_pkg.face_detector_node:main',
             'face_recognizer_node = perception_pkg.face_recognizer_node:main',
+            'voice_recognizer_node = perception_pkg.voice_recognizer_node:main',
+            'speech_to_text_node = perception_pkg.speech_to_text_node:main',
             'identification_visualization_node = perception_pkg.identification_visualization_node:main',
             'face_recognition_conditional = perception_pkg.face_recognition_conditional:main',
             'visualization_node = perception_pkg.visualization_node:main',

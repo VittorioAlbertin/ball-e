@@ -14,7 +14,7 @@ import json
 # Import service definitions from msgs_interfaces
 from msgs_interfaces.srv import (
     AddPerson, RecognizeFace, GetPerson, UpdateLastSeen,
-    UpdatePreferences, GetAllPeople, DeletePerson
+    UpdatePreferences, GetAllPeople, DeletePerson, RecognizeVoice
 )
 
 from interaction_pkg.people_database import PeopleDatabase
@@ -58,7 +58,10 @@ class PeopleDatabaseNode(Node):
         
         self.srv_delete_person = self.create_service(
             DeletePerson, 'people_db/delete_person', self.delete_person_callback)
-        
+
+        self.srv_recognize_voice = self.create_service(
+            RecognizeVoice, 'people_db/recognize_voice', self.recognize_voice_callback)
+
         self.get_logger().info('People database services ready! Other nodes can now call them.')
     
     def add_person_callback(self, request, response):
@@ -97,6 +100,13 @@ class PeopleDatabaseNode(Node):
             embedding = np.array(request.face_embedding, dtype=np.float32)
             threshold = request.confidence_threshold if request.confidence_threshold > 0 else 0.6
 
+            # Get all scores for Bayesian fusion
+            all_scores = self.db.get_all_face_scores(embedding, logger=self.get_logger())
+
+            # Populate all scores in response (for Bayesian fusion)
+            response.all_person_ids = list(all_scores.keys())
+            response.all_scores = [float(s) for s in all_scores.values()]
+
             result = self.db.find_similar_face(embedding, threshold, logger=self.get_logger())
 
             if result:
@@ -123,6 +133,8 @@ class PeopleDatabaseNode(Node):
             response.person_name = ''
             response.person_id = -1
             response.similarity_score = 0.0
+            response.all_person_ids = []
+            response.all_scores = []
             self.get_logger().error(f"Error during recognition: {str(e)}")
 
         return response
@@ -211,14 +223,57 @@ class PeopleDatabaseNode(Node):
             response.success = True
             response.message = f"Deleted person ID {request.person_id}"
             self.get_logger().info(response.message)
-            
+
         except Exception as e:
             response.success = False
             response.message = f"Error deleting person: {str(e)}"
             self.get_logger().error(response.message)
-        
+
         return response
-    
+
+    def recognize_voice_callback(self, request, response):
+        """Service callback: Find a person by voice embedding similarity."""
+        try:
+            embedding = np.array(request.voice_embedding, dtype=np.float32)
+            threshold = request.confidence_threshold if request.confidence_threshold > 0 else 0.75
+
+            # Get all scores for Bayesian fusion
+            all_scores = self.db.get_all_voice_scores(embedding, logger=self.get_logger())
+
+            # Populate all scores in response (for Bayesian fusion)
+            response.all_person_ids = list(all_scores.keys())
+            response.all_scores = [float(s) for s in all_scores.values()]
+
+            result = self.db.find_similar_voice(embedding, threshold, logger=self.get_logger())
+
+            if result:
+                match, similarity = result
+                response.match_found = True
+                response.person_id = match['id']
+                response.person_name = match['name']
+                response.similarity_score = float(similarity)
+
+                self.get_logger().info(
+                    f"Voice recognized: {match['name']} (ID: {match['id']}, similarity: {similarity:.4f})"
+                )
+            else:
+                response.match_found = False
+                response.person_name = ''
+                response.person_id = -1
+                response.similarity_score = 0.0
+                self.get_logger().info("Voice not recognized")
+
+        except Exception as e:
+            response.match_found = False
+            response.person_name = ''
+            response.person_id = -1
+            response.similarity_score = 0.0
+            response.all_person_ids = []
+            response.all_scores = []
+            self.get_logger().error(f"Error during voice recognition: {str(e)}")
+
+        return response
+
     def destroy_node(self):
         """Clean up database connection on shutdown."""
         self.get_logger().info('Shutting down people database node')

@@ -16,3 +16,5 @@ smmap==5.0.2
 onnxruntime-gpu
 scipy
 insightface
+resemblyzer
+openai-whisper

@@ -28,10 +28,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DetectFace.srv"
   "srv/GenerateEmbedding.srv"
   "srv/EnrollPerson.srv"
+  "srv/GenerateVoiceEmbedding.srv"
+  "srv/RecognizeVoice.srv"
   "msg/PersonTrack.msg"
   "msg/PersonTrackArray.msg"
   "msg/PersonState.msg"
   "msg/PersonStateArray.msg"
+  "msg/AudioChunk.msg"
+  "msg/SpeechSegment.msg"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

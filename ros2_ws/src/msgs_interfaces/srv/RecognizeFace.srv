@@ -12,3 +12,7 @@ bool match_found
 string person_name  # Empty if no match
 int32 person_id  # Database ID, -1 if no match
 float32 similarity_score  # Cosine similarity [0, 1]
+
+# Additional: scores for all known persons (for Bayesian fusion)
+int32[] all_person_ids      # List of all person IDs in database
+float32[] all_scores        # Corresponding similarity scores

@@ -1,0 +1,14 @@
+# GenerateVoiceEmbedding.srv
+# Generate speaker embedding from audio segment
+
+# Request
+float32[] audio_data        # Audio samples (float32, -1.0 to 1.0)
+uint32 sample_rate          # Sample rate in Hz (e.g., 16000)
+
+---
+
+# Response
+bool success
+float32[] embedding         # Voice embedding vector (256-dim for Resemblyzer)
+string message              # Status message
+float32 confidence          # Confidence in embedding quality (0-1)

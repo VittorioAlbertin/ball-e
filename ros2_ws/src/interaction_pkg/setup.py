@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'people_database_node = interaction_pkg.people_database_node:main',
             'enroll_by_track_id = interaction_pkg.enroll_by_track_id:main',
+            'enrollment_cli = interaction_pkg.enrollment_cli:main',
         ],
     },
 )

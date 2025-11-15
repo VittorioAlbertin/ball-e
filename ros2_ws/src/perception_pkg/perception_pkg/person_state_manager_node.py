@@ -68,10 +68,13 @@ from rclpy.node import Node
 from rclpy.duration import Duration
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
-from msgs_interfaces.msg import PersonTrackArray, PersonStateArray, PersonState, PersonTrack
-from msgs_interfaces.srv import DetectFace, GenerateEmbedding, RecognizeFace, AddPerson, UpdateLastSeen, EnrollPerson
+from msgs_interfaces.msg import PersonTrackArray, PersonStateArray, PersonState, PersonTrack, SpeechSegment
+from msgs_interfaces.srv import DetectFace, GenerateEmbedding, RecognizeFace, AddPerson, UpdateLastSeen, EnrollPerson, GenerateVoiceEmbedding, RecognizeVoice
 from builtin_interfaces.msg import Time
 import time
+import numpy as np
+
+from perception_pkg.temporal_bayesian_tracker import TemporalBayesianIdentity, MultiTrackIdentityManager
 
 
 class PersonStateManager(Node):
@@ -83,15 +86,23 @@ class PersonStateManager(Node):
         self.declare_parameter('known_person_reidentify_interval', 15.0)
         self.declare_parameter('unknown_person_reidentify_interval', 5.0)
         self.declare_parameter('max_identification_attempts', 5)
+        self.declare_parameter('identity_confidence_threshold', 0.5)
+        self.declare_parameter('enable_voice_recognition', True)
 
         # Get parameters
         self.reidentification_threshold = self.get_parameter('reidentification_confidence_threshold').value
         self.known_interval = self.get_parameter('known_person_reidentify_interval').value
         self.unknown_interval = self.get_parameter('unknown_person_reidentify_interval').value
         self.max_attempts = self.get_parameter('max_identification_attempts').value
+        self.identity_confidence_threshold = self.get_parameter('identity_confidence_threshold').value
+        self.enable_voice_recognition = self.get_parameter('enable_voice_recognition').value
 
         # Internal state: {track_id: PersonStateData}
         self.person_states = {}
+
+        # Bayesian identity trackers: {track_id: TemporalBayesianIdentity}
+        self.identity_trackers = {}
+        self.known_person_ids = []  # Will be populated from database
 
         # Create callback groups to allow concurrent execution
         self.reentrant_group = ReentrantCallbackGroup()
@@ -136,6 +147,29 @@ class PersonStateManager(Node):
             callback_group=self.reentrant_group
         )
 
+        # Voice recognition service clients
+        if self.enable_voice_recognition:
+            self.generate_voice_embedding_client = self.create_client(
+                GenerateVoiceEmbedding,
+                '/voice_recognition/generate_embedding',
+                callback_group=self.reentrant_group
+            )
+            self.recognize_voice_client = self.create_client(
+                RecognizeVoice,
+                'people_db/recognize_voice',
+                callback_group=self.reentrant_group
+            )
+
+            # Subscribe to speech segments for voice recognition
+            self.speech_sub = self.create_subscription(
+                SpeechSegment,
+                '/microphone/speech_segment',
+                self.speech_segment_callback,
+                10,
+                callback_group=self.reentrant_group
+            )
+            self.get_logger().info("Voice recognition enabled")
+
         # Service server (use service group)
         self.enroll_service = self.create_service(
             EnrollPerson,
@@ -147,11 +181,16 @@ class PersonStateManager(Node):
         # Publishing timer for state array (use reentrant group)
         self.create_timer(0.1, self.publish_state_array, callback_group=self.reentrant_group)  # 10 Hz
 
-        self.get_logger().info("PersonStateManager initialized (Service-Based with MultiThreadedExecutor)")
+        # Timer for Bayesian tracker decay (apply time-based confidence decay)
+        self.create_timer(1.0, self.apply_tracker_decay, callback_group=self.reentrant_group)  # 1 Hz
+
+        self.get_logger().info("PersonStateManager initialized (Service-Based with MultiThreadedExecutor + Bayesian Fusion)")
         self.get_logger().info(f"  Reidentification threshold: {self.reidentification_threshold}")
         self.get_logger().info(f"  Known person interval: {self.known_interval}s")
         self.get_logger().info(f"  Unknown person interval: {self.unknown_interval}s")
         self.get_logger().info(f"  Max attempts: {self.max_attempts}")
+        self.get_logger().info(f"  Identity confidence threshold: {self.identity_confidence_threshold}")
+        self.get_logger().info(f"  Voice recognition: {self.enable_voice_recognition}")
 
     def track_callback(self, msg: PersonTrackArray):
         """
@@ -179,9 +218,19 @@ class PersonStateManager(Node):
                     'bbox': (track.bbox_x, track.bbox_y, track.bbox_w, track.bbox_h),
                     'tracking_confidence': track.tracking_confidence,
                     'frames_since_last_seen': track.frames_since_last_seen,
-                    'requires_identification': False  # External flag for manual enrollment
+                    'requires_identification': False,  # External flag for manual enrollment
+                    # NEW: Voice-specific fields
+                    'voice_identity': 'unknown',
+                    'voice_confidence': 0.0,
+                    'voice_person_id': -1,
+                    'last_voice_identification_time': None,
+                    'is_speaking': False
                 }
-                self.get_logger().info(f"New track initialized: {track.track_id}")
+                # Initialize Bayesian tracker for this track
+                self.identity_trackers[track.track_id] = TemporalBayesianIdentity(
+                    self.known_person_ids
+                )
+                self.get_logger().info(f"New track initialized: {track.track_id} (with Bayesian tracker)")
 
             # Update state from track
             state = self.person_states[track.track_id]
@@ -224,10 +273,14 @@ class PersonStateManager(Node):
         for track_id in tracks_to_remove:
             self.get_logger().info(f"Removing lost track: {track_id}")
             del self.person_states[track_id]
+            if track_id in self.identity_trackers:
+                del self.identity_trackers[track_id]
 
     def requires_identification(self, track, state) -> bool:
         """
         Determine if a track requires (re-)identification.
+
+        Uses Bayesian identity confidence (not tracking confidence) to decide.
 
         Args:
             track: PersonTrack message
@@ -254,21 +307,25 @@ class PersonStateManager(Node):
 
         # Determine cooldown period based on current identity
         if state['identity'] != 'unknown':
-            cooldown = self.known_interval  # 60 seconds for known persons
+            cooldown = self.known_interval  # 15 seconds for known persons
         else:
-            cooldown = self.unknown_interval  # 15 seconds for unknown persons
+            cooldown = self.unknown_interval  # 5 seconds for unknown persons
 
         # If we recently tried identification, respect cooldown period
         if time_since_last is not None and time_since_last < cooldown:
             return False
 
-        # Condition 2: LOW CONFIDENCE (but only after cooldown)
-        if track.tracking_confidence < self.reidentification_threshold:
-            if time_since_last is None or time_since_last >= cooldown:
-                self.get_logger().info(
-                    f"Track {track.track_id}: LOW CONFIDENCE ({track.tracking_confidence:.2f}) - requires re-identification"
-                )
-                return True
+        # Condition 2: LOW IDENTITY CONFIDENCE (from Bayesian tracker)
+        # Note: We NO LONGER use tracking_confidence for identity decisions
+        # Tracking confidence is for visual tracking quality, not identity certainty
+        if track.track_id in self.identity_trackers:
+            identity, identity_conf = self.identity_trackers[track.track_id].get_identity_with_decay()
+            if identity_conf < self.identity_confidence_threshold:
+                if time_since_last is None or time_since_last >= cooldown:
+                    self.get_logger().info(
+                        f"Track {track.track_id}: LOW IDENTITY CONFIDENCE ({identity_conf:.2f}) - requires re-identification"
+                    )
+                    return True
 
         # Condition 3: TIME ELAPSED (periodic re-verification)
         if time_since_last is not None and time_since_last >= cooldown:
@@ -305,6 +362,16 @@ class PersonStateManager(Node):
 
         # 3. Recognize face
         identity_result = self.call_recognize_face(embedding_result['embedding'])
+
+        # 4. Update Bayesian tracker with face scores
+        if track.track_id in self.identity_trackers and identity_result.get('all_scores'):
+            self.identity_trackers[track.track_id].update_face(identity_result['all_scores'])
+
+            # Get fused identity from Bayesian tracker
+            bayesian_identity, bayesian_conf = self.identity_trackers[track.track_id].get_identity()
+            self.get_logger().info(
+                f"Track {track.track_id}: Bayesian identity after face update: {bayesian_identity} ({bayesian_conf:.3f})"
+            )
 
         if identity_result['match_found']:
             self.get_logger().info(
@@ -403,7 +470,7 @@ class PersonStateManager(Node):
     def call_recognize_face(self, embedding) -> dict:
         """Call face recognition service."""
         if not self.recognize_face_client.wait_for_service(timeout_sec=1.0):
-            return {'match_found': False, 'person_name': '', 'person_id': -1, 'similarity_score': 0.0}
+            return {'match_found': False, 'person_name': '', 'person_id': -1, 'similarity_score': 0.0, 'all_scores': {}}
 
         request = RecognizeFace.Request()
         request.face_embedding = embedding
@@ -417,21 +484,27 @@ class PersonStateManager(Node):
             start_time = time.time()
             while not future.done():
                 if time.time() - start_time > timeout:
-                    return {'match_found': False, 'person_name': '', 'person_id': -1, 'similarity_score': 0.0}
+                    return {'match_found': False, 'person_name': '', 'person_id': -1, 'similarity_score': 0.0, 'all_scores': {}}
                 time.sleep(0.01)
 
             response = future.result()
+
+            # Convert all_scores to dict for Bayesian fusion
+            all_scores = {}
+            for i, person_id in enumerate(response.all_person_ids):
+                all_scores[person_id] = float(response.all_scores[i])
 
             return {
                 'match_found': response.match_found,
                 'person_name': response.person_name,
                 'person_id': response.person_id,
-                'similarity_score': response.similarity_score
+                'similarity_score': response.similarity_score,
+                'all_scores': all_scores  # For Bayesian tracker
             }
 
         except Exception as e:
             self.get_logger().error(f"recognize_face service call failed: {e}")
-            return {'match_found': False, 'person_name': '', 'person_id': -1, 'similarity_score': 0.0}
+            return {'match_found': False, 'person_name': '', 'person_id': -1, 'similarity_score': 0.0, 'all_scores': {}}
 
     def call_add_person(self, name, embedding, notes) -> dict:
         """Call add person service."""
@@ -639,6 +712,196 @@ class PersonStateManager(Node):
         msg.pending_identification_count = pending_count
 
         self.state_pub.publish(msg)
+
+    def speech_segment_callback(self, msg: SpeechSegment):
+        """
+        Process speech segment for voice recognition.
+
+        This is triggered when speech is detected by the microphone node.
+        For single speaker scenario, we update all tracked persons with voice evidence.
+
+        Args:
+            msg: SpeechSegment with detected speech audio
+        """
+        if not self.enable_voice_recognition:
+            return
+
+        if not self.person_states:
+            self.get_logger().debug("Speech detected but no persons being tracked")
+            return
+
+        self.get_logger().info(
+            f"Processing speech segment: {msg.duration_seconds:.2f}s for voice recognition"
+        )
+
+        # Generate voice embedding
+        voice_embedding = self.call_generate_voice_embedding(msg)
+        if voice_embedding is None:
+            self.get_logger().warning("Failed to generate voice embedding")
+            return
+
+        # Get voice scores for all known persons
+        voice_scores = self.call_recognize_voice(voice_embedding)
+        if not voice_scores:
+            self.get_logger().warning("Failed to get voice recognition scores")
+            return
+
+        # For single speaker scenario: Update all tracked persons' Bayesian trackers
+        # In multi-speaker scenario with DoA, we would match voice to specific person
+        for track_id in list(self.identity_trackers.keys()):
+            if track_id in self.person_states:
+                tracker = self.identity_trackers[track_id]
+                tracker.update_voice(voice_scores)
+
+                # Get updated identity from Bayesian tracker
+                identity, confidence = tracker.get_identity()
+
+                # Update state with fused identity
+                state = self.person_states[track_id]
+                state['voice_identity'] = str(identity) if identity != 'unknown' else 'unknown'
+                state['voice_confidence'] = float(confidence)
+                state['last_voice_identification_time'] = msg.header.stamp
+                state['is_speaking'] = True
+
+                # Update main identity from fused Bayesian belief
+                if identity != 'unknown' and confidence > state['identity_confidence']:
+                    state['identity'] = str(identity) if isinstance(identity, str) else self.get_person_name(identity)
+                    state['identity_confidence'] = confidence
+                    state['person_id'] = identity if isinstance(identity, int) else -1
+
+                self.get_logger().info(
+                    f"Track {track_id}: Voice evidence updated - "
+                    f"Bayesian identity: {identity} ({confidence:.2f})"
+                )
+
+    def call_generate_voice_embedding(self, speech_msg: SpeechSegment) -> list:
+        """
+        Call voice embedding generation service.
+
+        Args:
+            speech_msg: SpeechSegment with audio data
+
+        Returns:
+            list: Voice embedding or None on failure
+        """
+        if not self.generate_voice_embedding_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warning("generate_voice_embedding service not available")
+            return None
+
+        request = GenerateVoiceEmbedding.Request()
+        request.audio_data = speech_msg.audio_data
+        request.sample_rate = speech_msg.sample_rate
+
+        try:
+            future = self.generate_voice_embedding_client.call_async(request)
+
+            timeout = 5.0  # Voice embedding can take longer
+            start_time = time.time()
+            while not future.done():
+                if time.time() - start_time > timeout:
+                    self.get_logger().warning("Voice embedding service call timeout")
+                    return None
+                time.sleep(0.01)
+
+            response = future.result()
+
+            if response.success:
+                return list(response.embedding)
+            else:
+                self.get_logger().warning(f"Voice embedding failed: {response.message}")
+                return None
+
+        except Exception as e:
+            self.get_logger().error(f"Voice embedding service call failed: {e}")
+            return None
+
+    def call_recognize_voice(self, voice_embedding: list) -> dict:
+        """
+        Call voice recognition service to get scores for all known persons.
+
+        Args:
+            voice_embedding: Voice embedding vector
+
+        Returns:
+            dict: {person_id: score} for all known persons
+        """
+        if not self.recognize_voice_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warning("recognize_voice service not available")
+            return {}
+
+        request = RecognizeVoice.Request()
+        request.voice_embedding = voice_embedding
+        request.confidence_threshold = 0.0  # We want all scores for Bayesian fusion
+
+        try:
+            future = self.recognize_voice_client.call_async(request)
+
+            timeout = 2.0
+            start_time = time.time()
+            while not future.done():
+                if time.time() - start_time > timeout:
+                    return {}
+                time.sleep(0.01)
+
+            response = future.result()
+
+            # Convert to dict
+            scores = {}
+            for i, person_id in enumerate(response.all_person_ids):
+                scores[person_id] = float(response.all_scores[i])
+
+            return scores
+
+        except Exception as e:
+            self.get_logger().error(f"Voice recognition service call failed: {e}")
+            return {}
+
+    def apply_tracker_decay(self):
+        """
+        Apply time-based confidence decay to all Bayesian trackers.
+
+        Called periodically (1 Hz) to model uncertainty increase over time.
+        """
+        for track_id, tracker in self.identity_trackers.items():
+            tracker.predict()  # Apply decay
+
+            # Update state with decayed confidence
+            if track_id in self.person_states:
+                identity, confidence = tracker.get_identity()
+                state = self.person_states[track_id]
+
+                # Only update if Bayesian confidence is better than current
+                # This allows the Bayesian tracker to gradually take over
+                state['identity_confidence'] = confidence
+
+    def get_person_name(self, person_id: int) -> str:
+        """
+        Get person name from database by ID.
+
+        Args:
+            person_id: Database person ID
+
+        Returns:
+            str: Person name or 'unknown'
+        """
+        # TODO: Implement caching or service call to get person name
+        # For now, return the ID as string
+        return f"person_{person_id}"
+
+    def update_known_persons(self, person_ids: list):
+        """
+        Update the list of known person IDs (e.g., after enrollment).
+
+        Args:
+            person_ids: List of known person IDs
+        """
+        self.known_person_ids = list(person_ids)
+
+        # Update all existing trackers
+        for tracker in self.identity_trackers.values():
+            for pid in person_ids:
+                if pid not in tracker.known_person_ids:
+                    tracker.add_person(pid)
 
 
 def main(args=None):

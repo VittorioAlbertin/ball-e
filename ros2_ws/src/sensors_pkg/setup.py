@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_node = sensors_pkg.camera_node:main',
+            'microphone_node = sensors_pkg.microphone_node:main',
         ],
     },
 )
