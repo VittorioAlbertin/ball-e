@@ -365,10 +365,18 @@ class PersonStateManager(Node):
 
         # 4. Update Bayesian tracker with face scores
         if track.track_id in self.identity_trackers and identity_result.get('all_scores'):
-            self.identity_trackers[track.track_id].update_face(identity_result['all_scores'])
+            tracker = self.identity_trackers[track.track_id]
+
+            # Ensure all persons from scores are known to the tracker
+            for person_id in identity_result['all_scores'].keys():
+                if person_id not in tracker.known_person_ids:
+                    tracker.add_person(person_id)
+                    self.get_logger().info(f"Track {track.track_id}: Added person_id {person_id} to Bayesian tracker")
+
+            tracker.update_face(identity_result['all_scores'])
 
             # Get fused identity from Bayesian tracker
-            bayesian_identity, bayesian_conf = self.identity_trackers[track.track_id].get_identity()
+            bayesian_identity, bayesian_conf = tracker.get_identity()
             self.get_logger().info(
                 f"Track {track.track_id}: Bayesian identity after face update: {bayesian_identity} ({bayesian_conf:.3f})"
             )

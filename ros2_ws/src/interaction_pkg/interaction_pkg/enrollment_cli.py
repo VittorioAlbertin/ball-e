@@ -249,6 +249,10 @@ class EnrollmentCLI(Node):
 
             # Wait for speech
             self.speech_segments = []
+
+            # Small delay to let keypress sound pass through VAD
+            time.sleep(0.3)
+
             self.waiting_for_speech = True
 
             print("   Listening...", end=" ", flush=True)

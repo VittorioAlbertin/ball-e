@@ -30,6 +30,8 @@ DATE: 2025-11-15
 import rclpy
 from rclpy.node import Node
 import numpy as np
+import os
+import urllib.request
 
 from msgs_interfaces.msg import SpeechSegment
 from msgs_interfaces.srv import GenerateVoiceEmbedding
@@ -48,10 +50,23 @@ class VoiceRecognizerNode(Node):
 
         self.auto_recognize = self.get_parameter('auto_recognize').value
 
-        # Load Resemblyzer model
+        # Load Resemblyzer model from local models directory
         self.get_logger().info("Loading Resemblyzer voice encoder model...")
         try:
-            self.encoder = VoiceEncoder()
+            # Use explicit path to models/resemblyzer directory
+            models_dir = '/ball-e/ros2_ws/models/resemblyzer'
+            os.makedirs(models_dir, exist_ok=True)
+            weights_path = os.path.join(models_dir, 'pretrained.pt')
+
+            # Download if not present
+            if not os.path.exists(weights_path):
+                self.get_logger().info(f"Downloading Resemblyzer model to {weights_path}...")
+                model_url = "https://github.com/resemble-ai/Resemblyzer/raw/master/resemblyzer/pretrained.pt"
+                urllib.request.urlretrieve(model_url, weights_path)
+                self.get_logger().info("Download complete")
+
+            self.get_logger().info(f"Resemblyzer model directory: {models_dir}")
+            self.encoder = VoiceEncoder(weights_fpath=weights_path)
             self.get_logger().info("Resemblyzer model loaded successfully")
             self.get_logger().info(f"  Embedding dimension: 256")
         except Exception as e:

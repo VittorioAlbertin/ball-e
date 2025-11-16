@@ -46,8 +46,10 @@ from msgs_interfaces.srv import DetectFace
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+import os
+import urllib.request
 
-# YuNet model will be downloaded automatically by OpenCV
+# YuNet model will be downloaded to models/yunet/ if not present
 
 
 class FaceDetectorNode(Node):
@@ -62,11 +64,23 @@ class FaceDetectorNode(Node):
         self.conf_threshold = self.get_parameter('confidence_threshold').value
         self.nms_threshold = self.get_parameter('nms_threshold').value
 
-        # Initialize YuNet face detector
-        # YuNet is built into OpenCV 4.5.4+
+        # Initialize YuNet face detector from local models directory
         try:
+            # Use explicit path to models/yunet directory
+            models_dir = '/ball-e/ros2_ws/models/yunet'
+            os.makedirs(models_dir, exist_ok=True)
+            model_path = os.path.join(models_dir, 'face_detection_yunet_2023mar.onnx')
+
+            # Download if not present
+            if not os.path.exists(model_path):
+                self.get_logger().info(f"Downloading YuNet model to {model_path}...")
+                model_url = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+                urllib.request.urlretrieve(model_url, model_path)
+                self.get_logger().info("Model downloaded successfully")
+
+            self.get_logger().info(f"YuNet model directory: {models_dir}")
             self.detector = cv2.FaceDetectorYN.create(
-                model="",  # Empty string uses the default model
+                model=model_path,
                 config="",
                 input_size=(320, 320),  # Will be updated dynamically
                 score_threshold=self.conf_threshold,
@@ -76,32 +90,7 @@ class FaceDetectorNode(Node):
             self.get_logger().info("YuNet face detector initialized successfully")
         except Exception as e:
             self.get_logger().error(f"Failed to initialize YuNet: {e}")
-            self.get_logger().info("Attempting to create detector with explicit model download...")
-
-            # Try to create with explicit model path
-            model_path = cv2.samples.findFile("face_detection_yunet_2023mar.onnx", False)
-            if not model_path:
-                # Download model if not found
-                import urllib.request
-                import os
-                model_url = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
-                model_dir = "/tmp"
-                model_path = os.path.join(model_dir, "face_detection_yunet_2023mar.onnx")
-
-                if not os.path.exists(model_path):
-                    self.get_logger().info(f"Downloading YuNet model to {model_path}...")
-                    urllib.request.urlretrieve(model_url, model_path)
-                    self.get_logger().info("Model downloaded successfully")
-
-            self.detector = cv2.FaceDetectorYN.create(
-                model=model_path,
-                config="",
-                input_size=(320, 320),
-                score_threshold=self.conf_threshold,
-                nms_threshold=self.nms_threshold,
-                top_k=5000
-            )
-            self.get_logger().info("YuNet detector created with explicit model path")
+            raise RuntimeError(f"Failed to initialize YuNet: {e}")
 
         # Bridge for ROS-CV conversion
         self.bridge = CvBridge()

@@ -4,14 +4,19 @@
   "runArgs": [
     "--privileged",
     "--network=host",
-    "--gpus=all"
+    "--gpus=all",
+    "--device=/dev/snd"
   ],
   "workspaceMount": "source=${localWorkspaceFolder},target=/${localWorkspaceFolderBasename},type=bind",
   "workspaceFolder": "/${localWorkspaceFolderBasename}",
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.bash_history,target=/home/vscode/.bash_history,type=bind",
-    "source=${localWorkspaceFolder}/.venv,target=/home/ubuntu/ml_env,type=bind"
+    "source=${localWorkspaceFolder}/.venv,target=/home/ubuntu/ml_env,type=bind",
+    "source=/run/user/1000/pulse,target=/run/user/1000/pulse,type=bind"
   ],
+  "containerEnv": {
+    "PULSE_SERVER": "unix:/run/user/1000/pulse/native"
+  },
   "onCreateCommand": "rm -rf /ball-e/ros2_ws/build /ball-e/ros2_ws/log /ball-e/ros2_ws/install",
   "postCreateCommand": "bash -i -c 'python3 -m venv /home/ubuntu/ml_env && source /home/ubuntu/ml_env/bin/activate && pip3 install -r .devcontainer/requirements.txt && deactivate && source /opt/ros/humble/setup.bash && python3 .devcontainer/colcon_build.py'"
 }

@@ -37,7 +37,7 @@ class MicrophoneNode(Node):
         super().__init__('microphone_node')
 
         # Declare parameters
-        self.declare_parameter('device_index', -1)
+        self.declare_parameter('device_index', 9)
         self.declare_parameter('sample_rate', 16000)
         self.declare_parameter('chunk_duration_ms', 200)  # Larger chunks reduce overflow
         self.declare_parameter('vad_threshold', 0.01)

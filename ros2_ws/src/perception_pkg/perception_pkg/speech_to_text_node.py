@@ -30,6 +30,7 @@ DATE: 2025-11-15
 import rclpy
 from rclpy.node import Node
 import numpy as np
+import os
 
 from msgs_interfaces.msg import SpeechSegment
 from std_msgs.msg import String
@@ -52,10 +53,15 @@ class SpeechToTextNode(Node):
         self.device = self.get_parameter('device').value
         self.auto_transcribe = self.get_parameter('auto_transcribe').value
 
-        # Load Whisper model
+        # Load Whisper model from local models directory
         self.get_logger().info(f"Loading Whisper model: {self.model_size}...")
         try:
-            self.model = whisper.load_model(self.model_size, device=self.device)
+            # Use explicit path to models/whisper directory
+            models_dir = '/ball-e/ros2_ws/models/whisper'
+            os.makedirs(models_dir, exist_ok=True)
+
+            self.get_logger().info(f"Whisper model directory: {models_dir}")
+            self.model = whisper.load_model(self.model_size, device=self.device, download_root=models_dir)
             self.get_logger().info(f"Whisper model loaded successfully")
             self.get_logger().info(f"  Model size: {self.model_size}")
             self.get_logger().info(f"  Device: {self.device}")
