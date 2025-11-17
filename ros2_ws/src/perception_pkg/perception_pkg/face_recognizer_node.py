@@ -60,6 +60,8 @@ DATE: 2025-10-30
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
 from msgs_interfaces.srv import GenerateEmbedding
@@ -153,18 +155,25 @@ class FaceRecognizerNode(Node):
 
         # Cache for high-res frames
         self.frame_cache = {}  # {timestamp_ns: Image}
-        self.cache_duration_sec = 3.0  # Keep frames for 3 seconds (for enrollment)
+        self.cache_duration_sec = 5.0  # Keep frames for 5 seconds (match detector cache)
 
         # Pinned frames cache (explicitly requested frames for identification)
         self.pinned_frames = {}  # {timestamp_ns: (Image, pin_time)}
         self.pinned_max_age = 30.0  # Auto-expire pinned frames after 30 seconds
 
-        # Subscriptions
+        # Create callback groups for multi-threaded execution
+        # Reentrant group for subscriptions (allow concurrent frame caching)
+        self.subscription_group = ReentrantCallbackGroup()
+        # Mutually exclusive group for service (heavy computation, one at a time)
+        self.service_group = MutuallyExclusiveCallbackGroup()
+
+        # Subscriptions - use reentrant group so frames keep arriving during service calls
         self.image_sub = self.create_subscription(
             Image,
             '/camera/image_raw',
             self.image_callback,
-            10
+            30,  # Increased from 10 to handle processing delays
+            callback_group=self.subscription_group
         )
 
         # Pin/release frame subscriptions
@@ -172,24 +181,27 @@ class FaceRecognizerNode(Node):
             Header,
             '/frame_cache/pin_timestamp',
             self.pin_frame_callback,
-            10
+            10,
+            callback_group=self.subscription_group
         )
         self.release_sub = self.create_subscription(
             Header,
             '/frame_cache/release_timestamp',
             self.release_frame_callback,
-            10
+            10,
+            callback_group=self.subscription_group
         )
 
-        # Service server
+        # Service server - use separate group for heavy computation
         self.generate_embedding_service = self.create_service(
             GenerateEmbedding,
             '/face_recognition/generate_embedding',
-            self.generate_embedding_callback
+            self.generate_embedding_callback,
+            callback_group=self.service_group
         )
 
-        # Cleanup timer
-        self.create_timer(2, self.cleanup_cache)
+        # Cleanup timer - use subscription group so it runs even during service calls
+        self.create_timer(2, self.cleanup_cache, callback_group=self.subscription_group)
 
         self.get_logger().info("FaceRecognizerNode initialized (InsightFace buffalo_l)")
         self.get_logger().info(f"  Resolution scaling: {self.low_res_width}x{self.low_res_height} → {self.high_res_width}x{self.high_res_height}")
@@ -205,9 +217,18 @@ class FaceRecognizerNode(Node):
         timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
         self.frame_cache[timestamp_ns] = msg
 
+        # Log first frame received (diagnostic)
+        if not hasattr(self, '_first_frame_logged'):
+            self._first_frame_logged = True
+            self.get_logger().info(
+                f"First high-res frame received: {msg.width}x{msg.height}, "
+                f"timestamp {timestamp_ns}, cache now has {len(self.frame_cache)} frames"
+            )
+
     def pin_frame_callback(self, msg: Header):
         """
         Pin a specific frame timestamp for identification.
+        Waits for the frame to arrive if not yet in cache.
 
         Args:
             msg: Header with timestamp to pin
@@ -217,9 +238,46 @@ class FaceRecognizerNode(Node):
         # Check if frame is in rolling cache
         if timestamp_ns in self.frame_cache:
             self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
-            self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns}")
+            self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (immediate)")
         else:
-            self.get_logger().warning(f"[PIN] Cannot pin timestamp {timestamp_ns} - not in rolling cache")
+            # Log initial cache state
+            if self.frame_cache:
+                cache_timestamps = sorted(self.frame_cache.keys())
+                newest = cache_timestamps[-1]
+                initial_delay_ms = (timestamp_ns - newest) / 1_000_000
+                self.get_logger().info(
+                    f"[PIN] Waiting for frame {timestamp_ns}, currently {initial_delay_ms:.1f}ms behind newest"
+                )
+            else:
+                self.get_logger().warning(f"[PIN] Cache is EMPTY, waiting for frame {timestamp_ns}")
+
+            # Frame not yet in cache - wait for it to arrive
+            max_wait_ms = 500  # Wait up to 500ms for frame to arrive
+            wait_interval_ms = 10
+            waited_ms = 0
+
+            while timestamp_ns not in self.frame_cache and waited_ms < max_wait_ms:
+                time.sleep(wait_interval_ms / 1000.0)
+                waited_ms += wait_interval_ms
+
+            if timestamp_ns in self.frame_cache:
+                self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
+                self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (waited {waited_ms}ms)")
+            else:
+                # Still not found after waiting
+                if self.frame_cache:
+                    cache_timestamps = sorted(self.frame_cache.keys())
+                    newest = cache_timestamps[-1]
+                    delay_ms = (timestamp_ns - newest) / 1_000_000
+                    self.get_logger().warning(
+                        f"[PIN] FAILED to pin timestamp {timestamp_ns} after waiting {waited_ms}ms. "
+                        f"Latest in cache: {newest} ({delay_ms:.1f}ms behind). "
+                        f"Cache size: {len(self.frame_cache)} frames"
+                    )
+                else:
+                    self.get_logger().warning(
+                        f"[PIN] Cannot pin timestamp {timestamp_ns} - cache is EMPTY after waiting {waited_ms}ms"
+                    )
 
     def release_frame_callback(self, msg: Header):
         """
@@ -257,8 +315,20 @@ class FaceRecognizerNode(Node):
             frame_msg = self.frame_cache[timestamp_ns]
             self.get_logger().debug(f"Track {request.track_id}: Found frame in rolling cache")
         else:
+            # Diagnostic: show what timestamps ARE in cache
+            diag_msg = f"Frame not found for timestamp {timestamp_ns}. "
+            if self.pinned_frames:
+                diag_msg += f"Pinned cache has: {list(self.pinned_frames.keys())}. "
+            else:
+                diag_msg += "Pinned cache is EMPTY. "
+            if self.frame_cache:
+                cache_timestamps = sorted(self.frame_cache.keys())
+                diag_msg += f"Rolling cache has {len(self.frame_cache)} frames, newest: {cache_timestamps[-1]}"
+            else:
+                diag_msg += "Rolling cache is EMPTY."
+
             response.success = False
-            response.message = f"Frame not found in cache for timestamp {timestamp_ns}"
+            response.message = diag_msg
             self.get_logger().warning(response.message)
             return response
 
@@ -427,11 +497,18 @@ class FaceRecognizerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = FaceRecognizerNode()
+
+    # Use MultiThreadedExecutor to allow concurrent execution
+    # This prevents frame caching from blocking during heavy computation
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
+
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
 

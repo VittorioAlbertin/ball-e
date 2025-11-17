@@ -273,6 +273,7 @@ class FaceDetectorNode(Node):
     def pin_frame_callback(self, msg: Header):
         """
         Pin a specific frame timestamp for identification.
+        Waits for the frame to arrive if not yet in cache.
 
         Args:
             msg: Header with timestamp to pin
@@ -282,9 +283,46 @@ class FaceDetectorNode(Node):
         # Check if frame is in rolling cache
         if timestamp_ns in self.frame_cache:
             self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
-            self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns}")
+            self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (immediate)")
         else:
-            self.get_logger().warning(f"[PIN] Cannot pin timestamp {timestamp_ns} - not in rolling cache")
+            # Log initial cache state
+            if self.frame_cache:
+                cache_timestamps = sorted(self.frame_cache.keys())
+                newest = cache_timestamps[-1]
+                initial_delay_ms = (timestamp_ns - newest) / 1_000_000
+                self.get_logger().info(
+                    f"[PIN] Waiting for frame {timestamp_ns}, currently {initial_delay_ms:.1f}ms behind newest"
+                )
+            else:
+                self.get_logger().warning(f"[PIN] Cache is EMPTY, waiting for frame {timestamp_ns}")
+
+            # Frame not yet in cache - wait for it to arrive
+            max_wait_ms = 500  # Wait up to 500ms for frame to arrive
+            wait_interval_ms = 10
+            waited_ms = 0
+
+            while timestamp_ns not in self.frame_cache and waited_ms < max_wait_ms:
+                time.sleep(wait_interval_ms / 1000.0)
+                waited_ms += wait_interval_ms
+
+            if timestamp_ns in self.frame_cache:
+                self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
+                self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (waited {waited_ms}ms)")
+            else:
+                # Still not found after waiting
+                if self.frame_cache:
+                    cache_timestamps = sorted(self.frame_cache.keys())
+                    newest = cache_timestamps[-1]
+                    delay_ms = (timestamp_ns - newest) / 1_000_000
+                    self.get_logger().warning(
+                        f"[PIN] FAILED to pin timestamp {timestamp_ns} after waiting {waited_ms}ms. "
+                        f"Latest in cache: {newest} ({delay_ms:.1f}ms behind). "
+                        f"Cache size: {len(self.frame_cache)} frames"
+                    )
+                else:
+                    self.get_logger().warning(
+                        f"[PIN] Cannot pin timestamp {timestamp_ns} - cache is EMPTY after waiting {waited_ms}ms"
+                    )
 
     def release_frame_callback(self, msg: Header):
         """
