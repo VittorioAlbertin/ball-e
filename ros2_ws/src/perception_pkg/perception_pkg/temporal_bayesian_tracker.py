@@ -68,14 +68,14 @@ class TemporalBayesianIdentity:
         self.max_history_size = 100  # Limit history to prevent memory bloat
 
     def _init_beliefs(self):
-        """Initialize belief distribution."""
+        """Initialize belief distribution with uniform prior."""
         n_known = len(self.known_person_ids)
-        if n_known > 0:
-            prob_per_person = (1.0 - self.prior_unknown) / n_known
-            self.belief = {pid: prob_per_person for pid in self.known_person_ids}
-        else:
-            self.belief = {}
-        self.belief['unknown'] = self.prior_unknown
+        n_total = n_known + 1  # +1 for unknown
+        uniform_prob = 1.0 / n_total
+
+        # All identities (including unknown) start with equal probability
+        self.belief = {pid: uniform_prob for pid in self.known_person_ids}
+        self.belief['unknown'] = uniform_prob
 
     def update_face(self, face_scores: Dict[int, float], timestamp: Optional[float] = None):
         """
@@ -316,15 +316,14 @@ class TemporalBayesianIdentity:
 
         self.known_person_ids.append(person_id)
 
-        # Give new person equal share of probability mass
-        # Redistribute from unknown and others
-        n = len(self.known_person_ids)
-        new_prob = (1.0 - self.prior_unknown) / n
+        # Give all identities (including unknown) equal probability
+        n_total = len(self.known_person_ids) + 1  # +1 for unknown
+        uniform_prob = 1.0 / n_total
 
         # Recalculate all probabilities
         for pid in self.known_person_ids:
-            self.belief[pid] = new_prob
-        self.belief['unknown'] = self.prior_unknown
+            self.belief[pid] = uniform_prob
+        self.belief['unknown'] = uniform_prob
 
     def remove_person(self, person_id: int):
         """

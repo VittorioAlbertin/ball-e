@@ -70,6 +70,7 @@ import cv2
 import numpy as np
 import os
 import time
+import threading
 
 # Import InsightFace
 from insightface.app import FaceAnalysis
@@ -156,10 +157,14 @@ class FaceRecognizerNode(Node):
         # Cache for high-res frames
         self.frame_cache = {}  # {timestamp_ns: Image}
         self.cache_duration_sec = 5.0  # Keep frames for 5 seconds (match detector cache)
+        self.max_cache_size = 100  # Max frames to keep (prevents unbounded growth)
 
         # Pinned frames cache (explicitly requested frames for identification)
         self.pinned_frames = {}  # {timestamp_ns: (Image, pin_time)}
         self.pinned_max_age = 30.0  # Auto-expire pinned frames after 30 seconds
+
+        # Thread-safe lock for cache operations
+        self.cache_lock = threading.Lock()
 
         # Create callback groups for multi-threaded execution
         # Reentrant group for subscriptions (allow concurrent frame caching)
@@ -201,7 +206,7 @@ class FaceRecognizerNode(Node):
         )
 
         # Cleanup timer - use subscription group so it runs even during service calls
-        self.create_timer(2, self.cleanup_cache, callback_group=self.subscription_group)
+        self.create_timer(0.5, self.cleanup_cache, callback_group=self.subscription_group)
 
         self.get_logger().info("FaceRecognizerNode initialized (InsightFace buffalo_l)")
         self.get_logger().info(f"  Resolution scaling: {self.low_res_width}x{self.low_res_height} → {self.high_res_width}x{self.high_res_height}")
@@ -215,7 +220,8 @@ class FaceRecognizerNode(Node):
             msg: Image message from high-res camera stream
         """
         timestamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-        self.frame_cache[timestamp_ns] = msg
+        with self.cache_lock:
+            self.frame_cache[timestamp_ns] = msg
 
         # Log first frame received (diagnostic)
         if not hasattr(self, '_first_frame_logged'):
@@ -235,11 +241,13 @@ class FaceRecognizerNode(Node):
         """
         timestamp_ns = msg.stamp.sec * 1_000_000_000 + msg.stamp.nanosec
 
-        # Check if frame is in rolling cache
-        if timestamp_ns in self.frame_cache:
-            self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
-            self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (immediate)")
-        else:
+        # Check if frame is in rolling cache (with lock)
+        with self.cache_lock:
+            if timestamp_ns in self.frame_cache:
+                self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
+                self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (immediate)")
+                return
+
             # Log initial cache state
             if self.frame_cache:
                 cache_timestamps = sorted(self.frame_cache.keys())
@@ -251,33 +259,36 @@ class FaceRecognizerNode(Node):
             else:
                 self.get_logger().warning(f"[PIN] Cache is EMPTY, waiting for frame {timestamp_ns}")
 
-            # Frame not yet in cache - wait for it to arrive
-            max_wait_ms = 500  # Wait up to 500ms for frame to arrive
-            wait_interval_ms = 10
-            waited_ms = 0
+        # Frame not yet in cache - wait for it to arrive (reduced timeout)
+        max_wait_ms = 100  # Wait up to 100ms (reduced from 500ms)
+        wait_interval_ms = 5  # Check more frequently
+        waited_ms = 0
 
-            while timestamp_ns not in self.frame_cache and waited_ms < max_wait_ms:
-                time.sleep(wait_interval_ms / 1000.0)
-                waited_ms += wait_interval_ms
+        while waited_ms < max_wait_ms:
+            time.sleep(wait_interval_ms / 1000.0)
+            waited_ms += wait_interval_ms
 
-            if timestamp_ns in self.frame_cache:
-                self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
-                self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (waited {waited_ms}ms)")
+            with self.cache_lock:
+                if timestamp_ns in self.frame_cache:
+                    self.pinned_frames[timestamp_ns] = (self.frame_cache[timestamp_ns], time.time())
+                    self.get_logger().info(f"[PIN] Pinned frame timestamp {timestamp_ns} (waited {waited_ms}ms)")
+                    return
+
+        # Still not found after waiting
+        with self.cache_lock:
+            if self.frame_cache:
+                cache_timestamps = sorted(self.frame_cache.keys())
+                newest = cache_timestamps[-1]
+                delay_ms = (timestamp_ns - newest) / 1_000_000
+                self.get_logger().warning(
+                    f"[PIN] FAILED to pin timestamp {timestamp_ns} after waiting {waited_ms}ms. "
+                    f"Latest in cache: {newest} ({delay_ms:.1f}ms behind). "
+                    f"Cache size: {len(self.frame_cache)} frames"
+                )
             else:
-                # Still not found after waiting
-                if self.frame_cache:
-                    cache_timestamps = sorted(self.frame_cache.keys())
-                    newest = cache_timestamps[-1]
-                    delay_ms = (timestamp_ns - newest) / 1_000_000
-                    self.get_logger().warning(
-                        f"[PIN] FAILED to pin timestamp {timestamp_ns} after waiting {waited_ms}ms. "
-                        f"Latest in cache: {newest} ({delay_ms:.1f}ms behind). "
-                        f"Cache size: {len(self.frame_cache)} frames"
-                    )
-                else:
-                    self.get_logger().warning(
-                        f"[PIN] Cannot pin timestamp {timestamp_ns} - cache is EMPTY after waiting {waited_ms}ms"
-                    )
+                self.get_logger().warning(
+                    f"[PIN] Cannot pin timestamp {timestamp_ns} - cache is EMPTY after waiting {waited_ms}ms"
+                )
 
     def release_frame_callback(self, msg: Header):
         """
@@ -288,9 +299,10 @@ class FaceRecognizerNode(Node):
         """
         timestamp_ns = msg.stamp.sec * 1_000_000_000 + msg.stamp.nanosec
 
-        if timestamp_ns in self.pinned_frames:
-            del self.pinned_frames[timestamp_ns]
-            self.get_logger().debug(f"[RELEASE] Released pinned frame {timestamp_ns}")
+        with self.cache_lock:
+            if timestamp_ns in self.pinned_frames:
+                del self.pinned_frames[timestamp_ns]
+                self.get_logger().debug(f"[RELEASE] Released pinned frame {timestamp_ns}")
 
     def generate_embedding_callback(self, request, response):
         """
@@ -308,29 +320,30 @@ class FaceRecognizerNode(Node):
 
         # Check if frame is available in pinned cache first, then rolling cache
         frame_msg = None
-        if timestamp_ns in self.pinned_frames:
-            frame_msg, _ = self.pinned_frames[timestamp_ns]
-            self.get_logger().debug(f"Track {request.track_id}: Found frame in pinned cache")
-        elif timestamp_ns in self.frame_cache:
-            frame_msg = self.frame_cache[timestamp_ns]
-            self.get_logger().debug(f"Track {request.track_id}: Found frame in rolling cache")
-        else:
-            # Diagnostic: show what timestamps ARE in cache
-            diag_msg = f"Frame not found for timestamp {timestamp_ns}. "
-            if self.pinned_frames:
-                diag_msg += f"Pinned cache has: {list(self.pinned_frames.keys())}. "
+        with self.cache_lock:
+            if timestamp_ns in self.pinned_frames:
+                frame_msg, _ = self.pinned_frames[timestamp_ns]
+                self.get_logger().debug(f"Track {request.track_id}: Found frame in pinned cache")
+            elif timestamp_ns in self.frame_cache:
+                frame_msg = self.frame_cache[timestamp_ns]
+                self.get_logger().debug(f"Track {request.track_id}: Found frame in rolling cache")
             else:
-                diag_msg += "Pinned cache is EMPTY. "
-            if self.frame_cache:
-                cache_timestamps = sorted(self.frame_cache.keys())
-                diag_msg += f"Rolling cache has {len(self.frame_cache)} frames, newest: {cache_timestamps[-1]}"
-            else:
-                diag_msg += "Rolling cache is EMPTY."
+                # Diagnostic: show what timestamps ARE in cache
+                diag_msg = f"Frame not found for timestamp {timestamp_ns}. "
+                if self.pinned_frames:
+                    diag_msg += f"Pinned cache has: {list(self.pinned_frames.keys())}. "
+                else:
+                    diag_msg += "Pinned cache is EMPTY. "
+                if self.frame_cache:
+                    cache_timestamps = sorted(self.frame_cache.keys())
+                    diag_msg += f"Rolling cache has {len(self.frame_cache)} frames, newest: {cache_timestamps[-1]}"
+                else:
+                    diag_msg += "Rolling cache is EMPTY."
 
-            response.success = False
-            response.message = diag_msg
-            self.get_logger().warning(response.message)
-            return response
+                response.success = False
+                response.message = diag_msg
+                self.get_logger().warning(response.message)
+                return response
 
         try:
             # Get high-res frame
@@ -477,21 +490,33 @@ class FaceRecognizerNode(Node):
         now_ns = self.get_clock().now().nanoseconds
         cache_duration_ns = int(self.cache_duration_sec * 1e9)
 
-        # Clean rolling cache
-        old_frames = [ts for ts in self.frame_cache.keys() if now_ns - ts > cache_duration_ns]
-        for ts in old_frames:
-            del self.frame_cache[ts]
+        with self.cache_lock:
+            # Clean rolling cache - remove old frames
+            old_frames = [ts for ts in self.frame_cache.keys() if now_ns - ts > cache_duration_ns]
+            for ts in old_frames:
+                del self.frame_cache[ts]
 
-        if len(old_frames) > 0:
-            self.get_logger().debug(f"Cleaned {len(old_frames)} old frames from rolling cache")
+            if len(old_frames) > 0:
+                self.get_logger().debug(f"Cleaned {len(old_frames)} old frames from rolling cache")
 
-        # Clean expired pinned frames (safety net)
-        now = time.time()
-        expired_pins = [ts for ts, (_, pin_time) in self.pinned_frames.items()
-                        if now - pin_time > self.pinned_max_age]
-        for ts in expired_pins:
-            del self.pinned_frames[ts]
-            self.get_logger().warning(f"[CLEANUP] Auto-expired pinned frame {ts} after {self.pinned_max_age}s")
+            # Enforce max cache size to prevent unbounded growth
+            if len(self.frame_cache) > self.max_cache_size:
+                sorted_ts = sorted(self.frame_cache.keys())
+                to_remove = sorted_ts[:-self.max_cache_size]  # Keep newest
+                for ts in to_remove:
+                    del self.frame_cache[ts]
+                if to_remove:
+                    self.get_logger().warning(
+                        f"[CLEANUP] Cache overflow! Removed {len(to_remove)} frames, keeping {self.max_cache_size}"
+                    )
+
+            # Clean expired pinned frames (safety net)
+            now = time.time()
+            expired_pins = [ts for ts, (_, pin_time) in self.pinned_frames.items()
+                            if now - pin_time > self.pinned_max_age]
+            for ts in expired_pins:
+                del self.pinned_frames[ts]
+                self.get_logger().warning(f"[CLEANUP] Auto-expired pinned frame {ts} after {self.pinned_max_age}s")
 
 
 def main(args=None):
