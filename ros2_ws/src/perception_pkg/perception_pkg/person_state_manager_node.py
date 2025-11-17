@@ -84,9 +84,9 @@ class PersonStateManager(Node):
 
         # Declare parameters
         self.declare_parameter('reidentification_confidence_threshold', 0.4)
-        self.declare_parameter('known_person_reidentify_interval', 15.0)
+        self.declare_parameter('known_person_reidentify_interval', 5.0)
         self.declare_parameter('unknown_person_reidentify_interval', 5.0)
-        self.declare_parameter('identity_confidence_threshold', 0.5)
+        self.declare_parameter('identity_confidence_threshold', 0.65)
         self.declare_parameter('enable_voice_recognition', True)
 
         # Get parameters
@@ -320,20 +320,34 @@ class PersonStateManager(Node):
         else:
             cooldown = self.unknown_interval  # 5 seconds for unknown persons
 
-        # If we recently REQUESTED identification, respect cooldown period
-        # This prevents spam: we only request once per cooldown period
-        if time_since_request is not None and time_since_request < cooldown:
-            return False
-
         # Condition 2: LOW IDENTITY CONFIDENCE (from Bayesian tracker)
-        # Confidence decays over time via apply_tracker_decay(), so this
-        # naturally triggers re-identification when uncertainty grows
+        # Check this BEFORE cooldown to allow emergency re-identification
+        emergency_reidentification = False
+        critical_confidence_threshold = 0.4  # Below this, ignore cooldown
+
         if track.track_id in self.identity_trackers:
             identity, identity_conf = self.identity_trackers[track.track_id].get_identity_with_decay()
-            if identity_conf < self.identity_confidence_threshold:
+            if identity_conf < critical_confidence_threshold:
+                # Critically low confidence - allow re-identification even during cooldown
+                self.get_logger().info(
+                    f"Track {track.track_id}: CRITICAL LOW CONFIDENCE ({identity_conf:.2f}) - emergency re-identification"
+                )
+                emergency_reidentification = True
+            elif identity_conf < self.identity_confidence_threshold:
                 self.get_logger().info(
                     f"Track {track.track_id}: LOW IDENTITY CONFIDENCE ({identity_conf:.2f}) - requires re-identification"
                 )
+                # Will check cooldown below
+
+        # If we recently REQUESTED identification, respect cooldown period
+        # UNLESS confidence is critically low (emergency re-identification)
+        if time_since_request is not None and time_since_request < cooldown and not emergency_reidentification:
+            return False
+
+        # Return True if confidence is below threshold (either critical or normal)
+        if track.track_id in self.identity_trackers:
+            identity, identity_conf = self.identity_trackers[track.track_id].get_identity_with_decay()
+            if identity_conf < self.identity_confidence_threshold:
                 return True
 
         return False
@@ -795,6 +809,20 @@ class PersonStateManager(Node):
         if not voice_scores:
             self.get_logger().warning("Failed to get voice recognition scores")
             return
+
+        # Filter out low-quality voice evidence (likely noise or invalid speech)
+        # If max score is too low, don't apply voice update as it would boost "unknown" probability
+        max_voice_score = max(voice_scores.values()) if voice_scores else 0.0
+        min_voice_confidence_threshold = 0.4  # Minimum score to consider valid speech
+
+        if max_voice_score < min_voice_confidence_threshold:
+            self.get_logger().info(
+                f"Ignoring voice evidence: max score {max_voice_score:.3f} < threshold {min_voice_confidence_threshold} "
+                f"(likely noise or invalid speech)"
+            )
+            return
+
+        self.get_logger().info(f"Applying voice evidence with max score {max_voice_score:.3f}")
 
         # For single speaker scenario: Update all tracked persons' Bayesian trackers
         # In multi-speaker scenario with DoA, we would match voice to specific person

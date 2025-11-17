@@ -14,7 +14,8 @@ PARAMETERS:
     - device_index (int): Audio device index (-1 for default) [default: -1]
     - sample_rate (int): Sample rate in Hz [default: 16000]
     - chunk_duration_ms (int): Duration of each audio chunk in ms [default: 100]
-    - vad_threshold (float): RMS threshold for voice activity [default: 0.01]
+    - vad_threshold_start (float): RMS threshold to START speech detection [default: 0.025]
+    - vad_threshold_end (float): RMS threshold to END speech detection (hysteresis) [default: 0.015]
     - speech_min_duration (float): Minimum speech duration in seconds [default: 0.5]
     - speech_max_silence (float): Max silence before ending segment in seconds [default: 1.0]
 
@@ -40,7 +41,8 @@ class MicrophoneNode(Node):
         self.declare_parameter('device_index', 9)
         self.declare_parameter('sample_rate', 16000)
         self.declare_parameter('chunk_duration_ms', 200)  # Larger chunks reduce overflow
-        self.declare_parameter('vad_threshold', 0.01)
+        self.declare_parameter('vad_threshold_start', 0.025)  # Higher threshold to START speech
+        self.declare_parameter('vad_threshold_end', 0.015)    # Lower threshold to END speech (hysteresis)
         self.declare_parameter('speech_min_duration', 0.5)
         self.declare_parameter('speech_max_silence', 1.0)
         self.declare_parameter('publish_raw_audio', False)  # Disable by default to reduce load
@@ -49,7 +51,8 @@ class MicrophoneNode(Node):
         self.device_index = self.get_parameter('device_index').value
         self.sample_rate = self.get_parameter('sample_rate').value
         self.chunk_duration_ms = self.get_parameter('chunk_duration_ms').value
-        self.vad_threshold = self.get_parameter('vad_threshold').value
+        self.vad_threshold_start = self.get_parameter('vad_threshold_start').value
+        self.vad_threshold_end = self.get_parameter('vad_threshold_end').value
         self.speech_min_duration = self.get_parameter('speech_min_duration').value
         self.speech_max_silence = self.get_parameter('speech_max_silence').value
         self.publish_raw_audio = self.get_parameter('publish_raw_audio').value
@@ -84,7 +87,7 @@ class MicrophoneNode(Node):
         self.get_logger().info(f"  Device: {self.device_index if self.device_index >= 0 else 'default'}")
         self.get_logger().info(f"  Sample rate: {self.sample_rate} Hz")
         self.get_logger().info(f"  Chunk size: {self.chunk_samples} samples ({self.chunk_duration_ms} ms)")
-        self.get_logger().info(f"  VAD threshold: {self.vad_threshold}")
+        self.get_logger().info(f"  VAD threshold start: {self.vad_threshold_start}, end: {self.vad_threshold_end}")
 
     def start_audio_stream(self):
         """Start the audio input stream."""
@@ -204,21 +207,31 @@ class MicrophoneNode(Node):
 
     def process_vad(self, audio_data, rms, timestamp):
         """
-        Simple energy-based Voice Activity Detection.
+        Energy-based Voice Activity Detection with hysteresis.
+
+        Uses different thresholds for starting and ending speech detection
+        to prevent rapid on/off toggling near the threshold boundary.
 
         Args:
             audio_data: Audio samples
             rms: Root mean square energy
             timestamp: ROS timestamp
         """
-        is_speech = rms > self.vad_threshold
+        # Hysteresis: use different thresholds based on current state
+        if self.is_speaking:
+            # Already speaking - use LOWER threshold to stay in speech mode
+            is_speech = rms > self.vad_threshold_end
+        else:
+            # Not speaking - use HIGHER threshold to start speech
+            is_speech = rms > self.vad_threshold_start
 
         # Debug: log RMS levels periodically
         if not hasattr(self, '_rms_log_counter'):
             self._rms_log_counter = 0
         self._rms_log_counter += 1
         if self._rms_log_counter % 50 == 0:  # Every 10 seconds at 200ms chunks
-            self.get_logger().info(f"VAD: RMS={rms:.6f}, threshold={self.vad_threshold}, is_speech={is_speech}")
+            threshold_used = self.vad_threshold_end if self.is_speaking else self.vad_threshold_start
+            self.get_logger().info(f"VAD: RMS={rms:.6f}, threshold={threshold_used:.4f} ({'end' if self.is_speaking else 'start'}), is_speech={is_speech}")
 
         if is_speech:
             if not self.is_speaking:

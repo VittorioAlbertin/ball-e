@@ -98,12 +98,6 @@ def generate_launch_description():
         description='Minimum Bayesian confidence for identity assignment'
     )
 
-    vad_threshold_arg = DeclareLaunchArgument(
-        'vad_threshold',
-        default_value='0.01',
-        description='Voice Activity Detection threshold'
-    )
-
     # Get launch configurations
     camera_index = LaunchConfiguration('camera_index')
     publish_fps = LaunchConfiguration('publish_fps')
@@ -112,7 +106,6 @@ def generate_launch_description():
     enable_stt = LaunchConfiguration('enable_stt')
     whisper_model = LaunchConfiguration('whisper_model')
     identity_confidence_threshold = LaunchConfiguration('identity_confidence_threshold')
-    vad_threshold = LaunchConfiguration('vad_threshold')
 
     # ===== VISUAL PIPELINE =====
     camera_node = Node(
@@ -191,9 +184,10 @@ def generate_launch_description():
         parameters=[{
             'sample_rate': 16000,
             'chunk_duration_ms': 200,
-            'vad_threshold': vad_threshold,
-            'speech_min_duration': 0.3,
-            'speech_max_silence': 0.5,
+            'vad_threshold_start': 0.025,
+            'vad_threshold_end': 0.015,
+            'speech_min_duration': 0.5,
+            'speech_max_silence': 1.5,
             'publish_raw_audio': False,
         }]
     )
@@ -270,7 +264,6 @@ def generate_launch_description():
         enable_stt_arg,
         whisper_model_arg,
         identity_confidence_threshold_arg,
-        vad_threshold_arg,
 
         # Visual pipeline
         camera_node,

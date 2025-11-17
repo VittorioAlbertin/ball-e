@@ -40,7 +40,7 @@ class TemporalBayesianIdentity:
         self,
         known_person_ids: List[int],
         prior_unknown: float = 0.1,
-        decay_rate_per_second: float = 0.01
+        decay_rate_per_second: float = 0.05
     ):
         """
         Initialize the Bayesian identity tracker.

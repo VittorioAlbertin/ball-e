@@ -121,9 +121,10 @@ def generate_launch_description():
         parameters=[{
             'sample_rate': 16000,
             'chunk_duration_ms': 200,
-            'vad_threshold': 0.01,
-            'speech_min_duration': 0.3,
-            'speech_max_silence': 0.5,
+            'vad_threshold_start': 0.025,
+            'vad_threshold_end': 0.015,
+            'speech_min_duration': 0.5,
+            'speech_max_silence': 1.5,
             'publish_raw_audio': False,
         }]
     )
