@@ -33,9 +33,19 @@ Ball-e's multi-modal identification system combines **face recognition** and **v
               ┌─────────────────────────────────────────┐
               │      PERSON STATE MANAGER               │
               │  ┌───────────────────────────────┐     │
-              │  │  Temporal Bayesian Tracker    │     │
+              │  │  Temporal Bayesian Tracker    │←────┼─── SINGLE SOURCE OF TRUTH
               │  │  P(identity | face, voice)    │     │
+              │  │  Returns: person_id (int)     │     │
               │  └───────────────────────────────┘     │
+              │                                         │
+              │  Internal State: person_id (int)       │
+              │  Published: person_name (string)       │
+              │        ↓                               │
+              │  GetPerson Service → DB name lookup    │
+              │                                         │
+              │  Frame Cache Control:                   │
+              │  → /frame_cache/pin_timestamp          │
+              │  → /frame_cache/release_timestamp      │
               └─────────────────────────────────────────┘
                        ▲                              ▲
                        │                              │
@@ -46,6 +56,15 @@ Ball-e's multi-modal identification system combines **face recognition** and **v
 │  Microphone → VAD → Speech Segment → Voice Recognizer → STT    │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Frame Cache Management (NEW)
+
+The system uses explicit frame pinning to prevent cache misses during identification:
+
+1. **Rolling Cache**: Both face_detector (5s) and face_recognizer (3s) maintain time-based caches
+2. **Pinned Cache**: When identification starts, PSM pins the frame via topic
+3. **Auto-expire**: Pinned frames auto-expire after 30 seconds (safety net)
+4. **Explicit Release**: PSM releases frames after identification completes
 
 ---
 
@@ -62,14 +81,15 @@ The system employs three distinct tracking layers, each serving a different purp
 ### Layer 2: Biometric Recognition (Face + Voice)
 - **Purpose**: Single-observation identity - "Who does this person look/sound like?"
 - **Output**: Similarity scores for all known persons
-- **Updates**: On-demand (new track, periodic re-identification, speech event)
+- **Updates**: On-demand (new track, low confidence due to decay, speech event)
 
 ### Layer 3: Temporal Bayesian Tracking
 - **Purpose**: Smoothed identity over time - "Who is this person, considering all evidence?"
 - **Output**: Probability distribution over identities
 - **Updates**: After each biometric observation
+- **Decay**: Confidence decays towards uniform distribution over time (1% per second)
 
-**Key Insight**: The three layers are independent. ByteTrack may lose and re-acquire a track (causing track_id change), but the Bayesian tracker maintains identity continuity through biometric evidence.
+**Key Insight**: The three layers are independent. ByteTrack may lose and re-acquire a track (causing track_id change), but the Bayesian tracker maintains identity continuity through biometric evidence. Re-identification is triggered by confidence decay, not periodic timers.
 
 ---
 
@@ -112,6 +132,45 @@ belief[id] = (1 - decay) * belief[id] + decay * (1/N)
 ```
 
 This models the intuition that identity certainty decreases over time without reinforcement.
+
+**Re-identification Trigger**: When decayed confidence drops below `identity_confidence_threshold` (default 0.5), the system automatically triggers re-identification. This replaces periodic timer-based re-identification with a principled uncertainty-driven approach.
+
+### Identity Storage Architecture (NEW)
+
+The system uses a **two-layer identity representation**:
+
+1. **Internal State**: Stores `person_id` (int), -1 for unknown
+   - Face recognition → Bayesian tracker → returns person_id
+   - Voice recognition → Bayesian tracker → state unchanged (just tracker)
+   - State synchronized from Bayesian tracker every 1 second
+
+2. **Published Messages**: Contains person_name (string)
+   - PersonStateArray publishes actual names from database
+   - GetPerson service client fetches names with caching
+   - Names resolved only at publish time (10 Hz)
+
+**Data Flow**:
+```
+Face Recognition → all_scores → tracker.update_face()
+                                         ↓
+                              Bayesian Tracker (single source)
+                                         ↓
+                              person_id + Bayesian confidence
+                                         ↓
+                              state['identity'] = person_id (int)
+                                         ↓
+                              publish_state_array()
+                                         ↓
+                              get_person_name(person_id) → DB lookup
+                                         ↓
+                              PersonState.identity = "Alice" (string)
+```
+
+This design ensures:
+- Both face and voice use the same Bayesian tracker
+- Confidence values are always comparable (Bayesian, not raw similarity)
+- No type mismatches between modalities
+- Database names fetched only when needed (with caching)
 
 ### Unknown Person Handling
 
@@ -164,11 +223,17 @@ unknown_likelihood = 1.0 - max(scores.values())
 
 #### `person_state_manager_node.py` (Modified)
 - **Function**: World state orchestrator with Bayesian fusion
-- **New Features**:
+- **Key Architecture**: Bayesian tracker is the single source of truth for identity
+- **Features**:
   - Maintains `identity_trackers` dict (track_id → Bayesian tracker)
   - Subscribes to speech segments for voice recognition
   - Uses identity confidence (not tracking confidence) for decisions
   - Fuses face and voice scores into unified identity
+  - **Stores person_id (int) internally**, not person names
+  - **Names fetched from database** via GetPerson service with caching
+  - Face recognition updates tracker, returns Bayesian output
+  - Voice recognition updates tracker only, no direct state modification
+  - State synchronized from Bayesian tracker via 1 Hz decay timer
 
 ### Interaction Package
 
@@ -258,6 +323,27 @@ int32[] all_person_ids
 float32[] all_scores
 ```
 
+#### `GetPerson.srv` (Used for name lookup)
+Fetches person details from database:
+```
+# Request
+int32 person_id
+string name  # Optional: query by name
+---
+# Response
+bool found
+int32 person_id
+string name
+string last_seen
+string created_at
+int32 interaction_count
+string preferences_json
+string notes
+string message
+```
+
+PersonStateManager uses this service with caching to resolve person_id → person_name for publishing.
+
 ---
 
 ## Launch Files
@@ -338,11 +424,21 @@ avg_embedding = normalize(avg_embedding)
 ### PersonStateManager Parameters
 
 ```yaml
-identity_confidence_threshold: 0.6  # Min Bayesian confidence for identity
-known_person_reidentify_interval: 60.0  # Seconds
-unknown_person_reidentify_interval: 15.0  # Seconds
-max_identification_attempts: 5
+identity_confidence_threshold: 0.5  # Min Bayesian confidence for identity
+known_person_reidentify_interval: 15.0  # Cooldown between requests (known persons)
+unknown_person_reidentify_interval: 5.0  # Cooldown between requests (unknown persons)
 enable_voice_recognition: true
+# NOTE: These intervals are cooldowns to prevent spam, NOT periodic triggers
+# Re-identification is triggered by confidence decay below threshold, not timers
+```
+
+### ByteTrack Person Tracker Parameters
+
+```yaml
+max_age: 30  # Frames to keep lost track
+min_hits: 20  # Consecutive detections before confirming (was 3, now 20 for stable faces)
+iou_threshold: 0.3  # IoU for matching
+high_conf_threshold: 0.6  # High quality detection threshold
 ```
 
 ### Temporal Bayesian Tracker Parameters
@@ -353,6 +449,7 @@ TemporalBayesianIdentity(
     prior_unknown=0.1,  # 10% prior for unknown person
     decay_rate_per_second=0.01  # Confidence decay rate
 )
+# Note: History limited to 100 entries to prevent memory bloat
 ```
 
 ### Microphone Node Parameters
@@ -447,6 +544,23 @@ sudo apt install ffmpeg  # For Whisper
 - Increase service timeout in clients
 - Check if all required nodes are running
 - Verify topic/service namespaces
+
+**Frame cache miss during identification**:
+- Check if frame pinning is working: look for `[PIN] Pinned frame` logs
+- Verify face_detector and face_recognizer subscribe to `/frame_cache/pin_timestamp`
+- Ensure timestamps match between camera and tracker messages
+- Check for excessive processing delay in pipeline
+
+**Identification triggers too often / too rarely**:
+- Adjust `identity_confidence_threshold` (default 0.5) - lower = less frequent re-ID
+- Adjust `decay_rate_per_second` in Bayesian tracker (default 0.01) - lower = slower decay
+- Cooldown intervals prevent spam but don't trigger re-ID
+- Re-identification is driven by confidence decay, not periodic timers
+
+**First identification always fails (unknown)**:
+- Increase `min_hits` in tracker (default 20 for stable faces)
+- Check lighting and camera quality
+- Ensure person is fully visible and stable before identification triggers
 
 ---
 

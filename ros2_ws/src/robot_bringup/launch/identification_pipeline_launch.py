@@ -103,7 +103,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'max_age': 30,
-            'min_hits': 3,
+            'min_hits': 20,
             'iou_threshold': 0.3,
             'high_conf_threshold': 0.6,
             'low_conf_threshold': 0.1,

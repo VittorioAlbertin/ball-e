@@ -65,6 +65,7 @@ class TemporalBayesianIdentity:
 
         # Evidence history (for debugging/analysis)
         self.update_history = []
+        self.max_history_size = 100  # Limit history to prevent memory bloat
 
     def _init_beliefs(self):
         """Initialize belief distribution."""
@@ -157,6 +158,10 @@ class TemporalBayesianIdentity:
             'scores': scores.copy(),
             'belief_after': self.belief.copy()
         })
+
+        # Trim history to prevent memory bloat
+        if len(self.update_history) > self.max_history_size:
+            self.update_history = self.update_history[-self.max_history_size:]
 
     def _scores_to_likelihoods(self, scores: Dict[int, float]) -> Dict[int, float]:
         """
